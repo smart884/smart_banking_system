@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 14px;
+  }
+  body {
+    @apply text-slate-900 bg-slate-50 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  html, body, #root { height: 100%; }
+}
+
+@layer components {
+  .container-7xl {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .section { @apply py-16; }
+
+  .card { @apply rounded-2xl bg-white shadow-xl p-6 transition-all duration-300; }
+  .card-hover { @apply hover:-translate-y-1 hover:shadow-2xl; }
+
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl font-bold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100;
+  }
+  
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-xl font-bold transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none bg-white border border-slate-200 text-slate-700 hover:bg-slate-50;
+  }
+
+  .btn-pill {
+    @apply rounded-full px-8;
+  }
+
+  .input {
+    @apply w-full px-5 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/5 focus:border-blue-600 transition-all font-medium text-slate-900 placeholder:text-slate-400;
+  }
+
+  .label {
+    @apply block text-xs font-black text-slate-500 uppercase tracking-widest mb-2 px-1;
+  }
+}
+
+.table { @apply w-full bg-white rounded-xl shadow-md overflow-hidden; }
+.table thead { @apply bg-gray-100 text-gray-600; }
+.table th, .table td { @apply p-3 text-sm; }
+.table tr { @apply border-t; }
+.table tbody tr:hover { @apply bg-slate-50; }
+
+.badge-success { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700; }
+.badge-danger { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700; }
+
+.hero-gradient { @apply bg-gradient-to-r from-blue-700 to-blue-500 text-white; }
+.glow-border { @apply bg-gradient-to-br from-blue-700 to-blue-500 p-[1px] rounded-2xl; }
+.glow-inner { @apply bg-white rounded-2xl p-6 shadow-xl; }

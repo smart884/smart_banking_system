@@ -1,0 +1,11 @@
+[
+  {
+    "transactionId": "tx-1",
+    "accountId": "acc-1",
+    "type": "credit",
+    "amount": 5000,
+    "description": "Initial deposit",
+    "date": "2024-01-02T00:00:00.000Z",
+    "balanceAfterTransaction": 5000
+  }
+]

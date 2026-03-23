@@ -1,0 +1,17 @@
+{
+  "name": "smartbank",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18 <22"
+  },
+  "scripts": {
+    "dev": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "preview": "npm --prefix client run preview",
+    "postinstall": "npm --prefix client install && npm --prefix server install"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

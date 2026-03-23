@@ -1,0 +1,11 @@
+[
+  {
+    "id": "acc-1",
+    "userId": "user-1",
+    "accountNumber": "SB1000000001",
+    "accountType": "Savings",
+    "balance": 5000,
+    "ifscCode": "SBIN0000123",
+    "branchName": "Main Branch"
+  }
+]

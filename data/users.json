@@ -1,0 +1,23 @@
+[
+  {
+    "id": "admin-1",
+    "firstName": "System",
+    "lastName": "Admin",
+    "email": "admin@smartbank.local",
+    "password": "$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36xSzs.W8sELpAo0P5u/9yK",
+    "role": "admin",
+    "status": "approved",
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "user-1",
+    "firstName": "Jane",
+    "lastName": "Doe",
+    "email": "jane@smartbank.local",
+    "password": "$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36xSzs.W8sELpAo0P5u/9yK",
+    "role": "customer",
+    "status": "approved",
+    "createdAt": "2024-01-02T00:00:00.000Z",
+    "contactNumber": "9999999999"
+  }
+] 

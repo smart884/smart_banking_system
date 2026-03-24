@@ -332,34 +332,7 @@ export default function ClerkDashboard() {
             </div>
 
             <div className="flex items-center gap-6">
-              <button 
-                onClick={() => setDebugMode(!debugMode)}
-                className={`p-3 rounded-2xl border transition-all flex items-center gap-2 group ${
-                  debugMode ? 'bg-amber-500 text-white border-amber-600' : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'
-                }`}
-                title="Toggle Debug Console"
-              >
-                <FileText size={20} />
-                <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Debug</span>
-              </button>
 
-              <button 
-                onClick={forceRefreshData}
-                className="p-3 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 group shadow-sm hover:shadow-blue-200"
-                title="Force Refresh Data"
-              >
-                <RefreshCcw size={20} className="group-active:rotate-180 transition-transform duration-500" />
-                <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Sync Data</span>
-              </button>
-
-              <button 
-                onClick={handleClearAll}
-                className="p-3 rounded-2xl bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white transition-all flex items-center gap-2 group shadow-sm hover:shadow-rose-200"
-                title="Clear Data Terminal"
-              >
-                <XCircle size={20} />
-                <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Clear</span>
-              </button>
 
               <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl">
                 <Search size={18} className="text-slate-400" />

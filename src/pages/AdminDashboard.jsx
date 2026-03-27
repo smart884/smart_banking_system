@@ -307,7 +307,7 @@ export default function AdminDashboard() {
         <div className="mb-16 px-2">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-600/20 overflow-hidden border border-slate-700">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tighter text-white uppercase leading-none">SMART<span className="text-blue-500">BANK</span></h2>

@@ -349,7 +349,7 @@ export default function ManagerDashboard() {
       <aside className="hidden lg:flex w-80 flex-col bg-slate-900 text-white border-r border-slate-800 sticky top-0 h-screen z-50 p-10">
         <div className="flex items-center gap-4 mb-16 px-2">
           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-600/20 overflow-hidden border border-slate-700">
-            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+            <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
           </div>
           <span className="text-2xl font-black tracking-tighter text-white uppercase">Smart<span className="text-blue-600">Manager</span></span>
         </div>

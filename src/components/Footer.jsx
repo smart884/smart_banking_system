@@ -15,7 +15,7 @@ export default function Footer() {
                 Smart Bank - <span className="text-blue-600">The E-Banking System</span>
               </span>
               <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-blue-900/50 overflow-hidden">
-                <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Smart Bank Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
+                <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
               </div>
             </Link>
             <p className="text-slate-400 text-lg leading-relaxed max-w-sm">

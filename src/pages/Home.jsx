@@ -50,7 +50,7 @@ export default function Home() {
             <div className="relative group animate-in fade-in slide-in-from-right-8 duration-1000 delay-200">
               <div className="absolute inset-0 bg-blue-600/10 blur-3xl rounded-full scale-150 group-hover:scale-175 transition-transform duration-700" />
               <div className="relative w-64 h-64 md:w-96 md:h-96 bg-white rounded-[60px] shadow-2xl flex items-center justify-center border border-slate-100 p-8 overflow-hidden rotate-3 group-hover:rotate-0 transition-all duration-500">
-                <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Smart Bank Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
+                <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
               </div>
             </div>
           </div>

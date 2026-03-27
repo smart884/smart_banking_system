@@ -60,7 +60,7 @@ export default function Navbar() {
           </span>
           {/* Bank Logo Image on Right Side */}
           <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-xl shadow-blue-200 group-hover:scale-110 transition-transform overflow-hidden border border-slate-100">
-            <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Smart Bank Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
+            <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
           </div>
         </Link>
 
@@ -115,7 +115,7 @@ export default function Navbar() {
           <div className="flex items-center justify-between mb-12">
              <div className="flex items-center gap-3">
                <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center shadow-lg border border-slate-100 overflow-hidden">
-                <img src="https://firebasestorage.googleapis.com/v0/b/smart-bank-e-system.appspot.com/o/logo.png?alt=media&token=logo-placeholder" alt="Smart Bank Logo" className="w-full h-full object-contain" onError={(e) => { e.target.src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' }} />
+                <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
               </div>
               <span className="text-xl font-black text-slate-900 tracking-tighter">Smart Bank</span>
             </div>

@@ -48,6 +48,55 @@ export default function SecureDashboard() {
   const userRequests = requests.filter(req => req.userId === userProfile?.uid || req.userName === `${userProfile?.firstName} ${userProfile?.lastName}`);
   const approvedAccounts = userRequests.filter(req => req.category === 'account' && req.status === 'approved');
   
+  // Calculate real total balance from approved accounts
+  const totalBalance = approvedAccounts.reduce((sum, acc) => sum + parseFloat(acc.details?.deposit || 0), 0);
+
+  // Prepare real transaction history from user requests
+  const transactionHistory = userRequests
+    .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
+    .map(req => {
+      let name = req.type;
+      let amountVal = 0;
+      let icon = '💳';
+      let isNegative = true;
+
+      if (req.category === 'account') {
+        name = `Initial Deposit (${req.details?.accountType || 'Saving'})`;
+        amountVal = parseFloat(req.details?.deposit || 0);
+        icon = '🏦';
+        isNegative = false;
+      } else if (req.category === 'transfer') {
+        name = `Transfer to ${req.details?.recipient || 'Unknown'}`;
+        amountVal = parseFloat(req.details?.amount || 0);
+        icon = '💸';
+      } else if (req.category === 'payment') {
+        name = req.details?.billCategory ? `${req.details.billCategory.charAt(0).toUpperCase() + req.details.billCategory.slice(1)} Bill` : 'Bill Payment';
+        amountVal = parseFloat(req.details?.amount || 0);
+        icon = '🧾';
+      }
+
+      return {
+        id: req.id,
+        name,
+        date: new Date(req.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+        amount: `${isNegative ? '-' : '+'}₹${amountVal.toLocaleString()}`,
+        amountVal,
+        status: req.status.charAt(0).toUpperCase() + req.status.slice(1),
+        icon,
+        isNegative
+      };
+    })
+    .sort((a, b) => new Date(b.id) - new Date(a.id));
+
+  // Calculate real Inflow and Outflow
+  const totalInflow = transactionHistory
+    .filter(tx => !tx.isNegative && tx.status === 'Approved')
+    .reduce((sum, tx) => sum + tx.amountVal, 0);
+  
+  const totalOutflow = transactionHistory
+    .filter(tx => tx.isNegative && tx.status === 'Approved')
+    .reduce((sum, tx) => sum + tx.amountVal, 0);
+
   const [modal, setModal] = useState({
     isOpen: false,
     type: '',
@@ -56,6 +105,7 @@ export default function SecureDashboard() {
 
   const [formData, setFormData] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const showToast = (message) => {
     setToast(message);
@@ -66,20 +116,33 @@ export default function SecureDashboard() {
     setModal({ isOpen: true, type, title });
     setFormData({});
     setSubmitting(false);
+    setFormError('');
   };
 
   const closeModal = () => {
     setModal({ ...modal, isOpen: false });
     setSubmitting(false);
+    setFormError('');
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (formError) setFormError('');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // VALIDATION: Initial Deposit for New Account must be >= 500
+    if (modal.type === 'new-account') {
+      const deposit = parseFloat(formData.deposit);
+      if (isNaN(deposit) || deposit < 500) {
+        setFormError('Initial deposit must be at least ₹500.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     console.log(`[USER-DASHBOARD] Submitting ${modal.type}...`, formData);
     
@@ -175,7 +238,7 @@ export default function SecureDashboard() {
                       </div>
                       <div className="flex items-end gap-4">
                         <h2 className="text-6xl sm:text-7xl font-black text-slate-900 tracking-tighter leading-none">
-                          {showBalance ? '₹12,84,250' : '••••••'}
+                          {showBalance ? `₹${totalBalance.toLocaleString()}` : '••••••'}
                         </h2>
                         <button 
                           onClick={() => setShowBalance(!showBalance)}
@@ -197,7 +260,7 @@ export default function SecureDashboard() {
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Inflow</p>
-                          <p className="text-lg font-black text-slate-900 leading-none mt-1">₹4,20,000</p>
+                          <p className="text-lg font-black text-slate-900 leading-none mt-1">₹{totalInflow.toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="p-6 bg-slate-50 rounded-[32px] border border-slate-100 flex items-center gap-4">
@@ -206,7 +269,7 @@ export default function SecureDashboard() {
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Outflow</p>
-                          <p className="text-lg font-black text-slate-900 leading-none mt-1">₹1,15,500</p>
+                          <p className="text-lg font-black text-slate-900 leading-none mt-1">₹{totalOutflow.toLocaleString()}</p>
                         </div>
                       </div>
                     </div>
@@ -225,28 +288,31 @@ export default function SecureDashboard() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <tbody>
-                        {[
-                          { name: 'Apple Store', date: 'Oct 24, 2023', amount: '-₹1,49,900', status: 'Completed', icon: '💻' },
-                          { name: 'Freelance Payout', date: 'Oct 22, 2023', amount: '+₹85,000', status: 'Completed', icon: '💰' },
-                          { name: 'Starbucks Coffee', date: 'Oct 21, 2023', amount: '-₹450', status: 'Pending', icon: '☕' },
-                          { name: 'Adobe Subscription', date: 'Oct 20, 2023', amount: '-₹4,200', status: 'Completed', icon: '🎨' },
-                        ].map((tx, idx) => (
-                          <tr key={idx} className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0">
-                            <td className="py-6 px-10">
-                              <div className="flex items-center gap-5">
-                                <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">{tx.icon}</div>
-                                <div>
-                                  <p className="font-black text-slate-900">{tx.name}</p>
-                                  <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">{tx.date}</p>
+                        {transactionHistory.length > 0 ? (
+                          transactionHistory.slice(0, 5).map((tx, idx) => (
+                            <tr key={tx.id || idx} className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0">
+                              <td className="py-6 px-10">
+                                <div className="flex items-center gap-5">
+                                  <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">{tx.icon}</div>
+                                  <div>
+                                    <p className="font-black text-slate-900">{tx.name}</p>
+                                    <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">{tx.date}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="py-6 px-10 text-right">
-                              <p className={`text-lg font-black ${tx.amount.startsWith('+') ? 'text-green-600' : 'text-slate-900'}`}>{tx.amount}</p>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{tx.status}</p>
+                              </td>
+                              <td className="py-6 px-10 text-right">
+                                <p className={`text-lg font-black ${!tx.isNegative ? 'text-green-600' : 'text-slate-900'}`}>{tx.amount}</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{tx.status}</p>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="2" className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest">
+                              No transactions yet
                             </td>
                           </tr>
-                        ))}
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -620,6 +686,11 @@ export default function SecureDashboard() {
         title={modal.title}
       >
         <form onSubmit={handleSubmit} className="space-y-8">
+          {formError && (
+            <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+              {formError}
+            </div>
+          )}
           {/* USE CASE: Request new account */}
           {modal.type === 'new-account' && (
             <>

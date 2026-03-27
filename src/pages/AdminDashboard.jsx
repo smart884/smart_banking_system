@@ -303,43 +303,43 @@ export default function AdminDashboard() {
   return (
     <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
-      <aside className={`fixed z-20 inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-slate-900 text-white w-64 space-y-6 py-7 px-2`}>
-        <div className="px-6 mb-8">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600 rounded-xl">
+      <aside className={`fixed z-20 inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-slate-900 text-white w-80 space-y-6 py-7 px-10 border-r border-slate-800`}>
+        <div className="mb-16 px-2">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
               <ShieldCheck size={28} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black tracking-tighter">SMART<span className="text-blue-500">BANK</span></h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Admin Control</p>
+              <h2 className="text-2xl font-black tracking-tighter text-white uppercase leading-none">SMART<span className="text-blue-500">BANK</span></h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Admin Control</p>
             </div>
           </div>
         </div>
-        <nav className="px-2">
+        <nav className="flex-1 space-y-3">
           {navLinks.map(link => (
             <NavLink 
               key={link.label}
               to={link.to} 
               end 
               className={({ isActive }) => 
-                `flex items-center py-3 px-4 my-1 rounded-xl transition-all duration-200 group ${
-                  isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                `w-full flex items-center gap-4 px-6 py-5 rounded-3xl transition-all duration-300 group ${
+                  isActive ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <link.icon className={`mr-3 h-5 w-5 transition-colors ${isActive ? 'text-white' : 'group-hover:text-white'}`} />
-                  <span className="font-semibold text-sm">{link.label}</span>
+                  <link.icon className={`h-5 w-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white group-hover:scale-110 transition-transform'}`} />
+                  <span className="font-black text-sm uppercase tracking-widest">{link.label}</span>
                 </>
               )}
             </NavLink>
           ))}
         </nav>
-        <div className="absolute bottom-5 left-0 right-0 px-4">
-          <button onClick={handleLogout} className="flex items-center w-full py-3 px-4 rounded-xl transition-all duration-200 text-slate-400 hover:bg-red-500/10 hover:text-red-500 group">
-            <LogOut className="mr-3 h-5 w-5 transition-colors group-hover:text-red-500" />
-            <span className="font-semibold text-sm">Log out</span>
+        <div className="mt-auto pt-8 border-t border-slate-800">
+          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 rounded-3xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group">
+            <LogOut className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+            <span className="font-black text-sm uppercase tracking-widest text-left">Log out</span>
           </button>
         </div>
       </aside>

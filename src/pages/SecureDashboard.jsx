@@ -527,12 +527,12 @@ export default function SecureDashboard() {
       )}
 
       {/* Modern Sidebar Navigation */}
-      <aside className="fixed left-0 top-0 bottom-0 w-80 bg-white border-r border-slate-100 z-50 p-8 hidden xl:flex flex-col">
+      <aside className="fixed left-0 top-0 bottom-0 w-80 bg-slate-900 text-white border-r border-slate-800 z-50 p-8 hidden xl:flex flex-col">
         <div className="flex items-center gap-4 mb-16 px-2">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-700 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 ring-4 ring-blue-50">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
             <Landmark className="text-white" size={24} />
           </div>
-          <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Smart<span className="text-blue-600">Bank</span></span>
+          <span className="text-2xl font-black tracking-tighter text-white uppercase">Smart<span className="text-blue-600">Bank</span></span>
         </div>
 
         <nav className="flex-1 space-y-2">
@@ -548,29 +548,29 @@ export default function SecureDashboard() {
               onClick={() => setActiveTab(item.id)}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
                 activeTab === item.id 
-                  ? 'bg-blue-600 text-white shadow-xl shadow-blue-200' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <item.icon size={22} className={activeTab === item.id ? 'text-white' : 'group-hover:scale-110 transition-transform'} />
+              <item.icon size={22} className={activeTab === item.id ? 'text-white' : 'group-hover:scale-110 transition-transform text-slate-400 group-hover:text-white'} />
               <span className="font-bold tracking-tight">{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="mt-auto pt-8 border-t border-slate-50 space-y-4">
-          <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 group hover:border-blue-200 transition-colors">
+        <div className="mt-auto pt-8 border-t border-slate-800 space-y-4">
+          <div className="bg-slate-800/50 rounded-3xl p-6 border border-slate-700 group hover:border-blue-500/50 transition-colors">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-blue-600 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-blue-400 shadow-sm">
                 <ShieldCheck size={20} />
               </div>
-              <span className="font-bold text-sm text-slate-900">Premium Plan</span>
+              <span className="font-bold text-sm text-white">Premium Plan</span>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed mb-4">Unlock advanced analytics and higher limits with Pro.</p>
-            <button className="w-full py-3 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-900 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all">UPGRADE NOW</button>
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">Unlock advanced analytics and higher limits with Pro.</p>
+            <button className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all">UPGRADE NOW</button>
           </div>
 
-          <button onClick={logout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all group">
+          <button onClick={logout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group">
             <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
             <span className="font-bold tracking-tight text-sm uppercase tracking-widest">Sign Out</span>
           </button>

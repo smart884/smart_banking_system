@@ -346,12 +346,12 @@ export default function ManagerDashboard() {
       <OverrideModal />
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-80 flex-col bg-white border-r border-slate-100 sticky top-0 h-screen z-50 p-10">
+      <aside className="hidden lg:flex w-80 flex-col bg-slate-900 text-white border-r border-slate-800 sticky top-0 h-screen z-50 p-10">
         <div className="flex items-center gap-4 mb-16 px-2">
-          <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
             <ShieldCheck size={24} />
           </div>
-          <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Smart<span className="text-blue-600">Manager</span></span>
+          <span className="text-2xl font-black tracking-tighter text-white uppercase">Smart<span className="text-blue-600">Manager</span></span>
         </div>
 
         <nav className="flex-1 space-y-3">
@@ -361,18 +361,18 @@ export default function ManagerDashboard() {
               onClick={() => setActiveTab(link.id)}
               className={`w-full flex items-center gap-4 px-6 py-5 rounded-3xl transition-all duration-300 group ${
                 activeTab === link.id 
-                  ? 'bg-blue-600 text-white shadow-2xl shadow-blue-200' 
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <link.icon size={22} className={activeTab === link.id ? 'text-white' : 'group-hover:scale-110 transition-transform'} />
+              <link.icon size={22} className={activeTab === link.id ? 'text-white' : 'group-hover:scale-110 transition-transform text-slate-400 group-hover:text-white'} />
               <span className="font-black text-sm uppercase tracking-widest">{link.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="mt-auto pt-10 border-t border-slate-50">
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 rounded-3xl text-rose-500 hover:bg-rose-50 transition-all group">
+        <div className="mt-auto pt-10 border-t border-slate-800">
+          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 rounded-3xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group">
             <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
             <span className="font-black text-sm uppercase tracking-widest">Terminate Session</span>
           </button>

@@ -56,30 +56,19 @@ export const AuthProvider = ({ children }) => {
             setUserProfile({ ...profile, uid: user.uid });
             localStorage.setItem('sb_static_user', JSON.stringify({ ...profile, uid: user.uid }));
           } else {
-            // Fallback for demo: guess role from email if doc doesn't exist
-            let role = 'customer';
-            const emailLower = (user.email || '').toLowerCase();
-            if (emailLower.includes('clerk')) role = 'clerk';
-            else if (emailLower.includes('manager')) role = 'manager';
-            else if (emailLower.includes('admin')) role = 'admin';
-
-            const profile = { 
-              ...DUMMY_USER, 
-              email: user.email || '', 
-              uid: user.uid,
-              role: role,
-              userType: role
-            };
-            setUserProfile(profile);
-            localStorage.setItem('sb_static_user', JSON.stringify(profile));
+            // CRITICAL: If no Firestore profile exists, the user is effectively invalid
+            // for our banking system even if they exist in Firebase Auth.
+            console.error("Auth user exists but no Firestore profile found for UID:", user.uid);
+            setUserProfile(null);
+            localStorage.removeItem('sb_static_user');
           }
         } catch (err) {
           console.error("Error fetching user profile:", err);
+          setUserProfile(null);
         }
       } else {
-        // Check if we have a static session
-        const saved = localStorage.getItem('sb_static_user');
-        if (!saved) setUserProfile(null);
+        setUserProfile(null);
+        localStorage.removeItem('sb_static_user');
       }
       setLoading(false);
     });
@@ -140,58 +129,39 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = async (email, pass) => {
+  const login = async (email, password) => {
     try {
       setLoading(true);
-      // Real Firebase Login
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, pass);
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
       const user = userCredential.user;
-      
-      // Fetch real profile from Firestore immediately after login
+
+      // 2. Double-check if a profile exists for this user in Firestore
       const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const profile = userDoc.data();
-        setUserProfile(profile);
-        localStorage.setItem('sb_static_user', JSON.stringify(profile));
-      } else {
-        // Fallback for demo: guess role from email if doc doesn't exist
-        let role = 'customer';
-        const emailLower = email.toLowerCase();
-        if (emailLower.includes('clerk')) role = 'clerk';
-        else if (emailLower.includes('manager')) role = 'manager';
-        else if (emailLower.includes('admin')) role = 'admin';
-
-        const profile = { 
-          ...DUMMY_USER, 
-          email: user.email || '', 
-          uid: user.uid,
-          role: role,
-          userType: role
-        };
-        setUserProfile(profile);
-        localStorage.setItem('sb_static_user', JSON.stringify(profile));
+      if (!userDoc.exists()) {
+        throw new Error('user-not-found');
       }
-      
-      localStorage.setItem('sb_is_logged', 'true');
-      return profile.role; // Return role for redirection
-    } catch (err) {
-      console.error("Login failed:", err.message);
-      // Fallback for local testing if Firebase fails
-      let role = 'customer';
-      const emailLower = email.toLowerCase();
-      if (emailLower.includes('clerk')) role = 'clerk';
-      else if (emailLower.includes('manager')) role = 'manager';
-      else if (emailLower.includes('admin')) role = 'admin';
 
-      const profile = { 
-        ...DUMMY_USER, 
-        email, 
-        role: role,
-        userType: role
-      };
+      const profile = { ...userDoc.data(), uid: user.uid };
       setUserProfile(profile);
       localStorage.setItem('sb_static_user', JSON.stringify(profile));
-      return profile.role; // Return role for redirection
+
+      return { success: true, profile };
+    } catch (error) {
+      console.error("[Auth] Login error:", error.code || error.message);
+      
+      // Translate Firebase errors to user-friendly messages
+      let message = "Invalid credentials. Please try again.";
+      if (error.code === 'auth/user-not-found' || error.message === 'user-not-found') {
+        message = "No account found with this email.";
+      } else if (error.code === 'auth/wrong-password') {
+        message = "Incorrect password.";
+      } else if (error.code === 'auth/invalid-email') {
+        message = "Invalid email format.";
+      } else if (error.code === 'auth/too-many-requests') {
+        message = "Too many failed attempts. Please try later.";
+      }
+
+      return { success: false, message };
     } finally {
       setLoading(false);
     }

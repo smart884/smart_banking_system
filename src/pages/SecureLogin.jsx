@@ -21,63 +21,30 @@ export default function SecureLogin() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    if (!email || !password) {
+      setError("Please fill in all fields.");
+      return;
+    }
 
     try {
-      // 1. Use Firebase Client SDK for authentication
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      setLoading(true);
+      setError("");
+      
+      const result = await login(email, password);
 
-      // 2. Handle token and localStorage
-      const idToken = await user.getIdToken();
-      localStorage.setItem('sb_token', idToken);
-      localStorage.setItem('sb_user', JSON.stringify({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName || 'User'
-      }));
-
-      // 3. Get user role and redirect
-      const role = await login(email, password);
-      alert('Secure Login Successful ✅');
-
-      switch (role) {
-        case 'admin':
-          navigate('/admin/dashboard');
-          break;
-        case 'manager':
-          navigate('/manager/dashboard');
-          break;
-        case 'clerk':
-          navigate('/clerk/dashboard');
-          break;
-        default:
-          navigate('/user/dashboard');
+      if (result.success) {
+        const role = result.profile.role;
+        // Redirect based on role
+        if (role === 'admin') navigate('/admin/dashboard');
+        else if (role === 'manager') navigate('/manager/dashboard');
+        else if (role === 'clerk') navigate('/clerk/dashboard');
+        else navigate('/secure-dashboard');
+      } else {
+        setError(result.message || "Invalid credentials. Please check your email and password.");
       }
     } catch (err) {
-      // 4. Handle errors (invalid credentials, user not found)
-      console.error('Login error:', err.code, err.message);
-      
-      switch (err.code) {
-        case 'auth/user-not-found':
-          setError('No account found with this email.');
-          break;
-        case 'auth/wrong-password':
-          setError('Incorrect password. Please try again.');
-          break;
-        case 'auth/invalid-email':
-          setError('Invalid email address format.');
-          break;
-        case 'auth/invalid-credential':
-          setError('Invalid login credentials.');
-          break;
-        case 'auth/too-many-requests':
-          setError('Too many failed login attempts. Try again later.');
-          break;
-        default:
-          setError('Failed to login: ' + err.message);
-      }
+      console.error("Login failed:", err);
+      setError("An unexpected error occurred. Please try again later.");
     } finally {
       setLoading(false);
     }

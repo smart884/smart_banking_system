@@ -283,40 +283,42 @@ export default function ClerkDashboard() {
       {/* Modal System */}
       <RequestDetailsModal />
 
-      {/* Sidebar */}
-      <aside className="hidden lg:flex w-72 flex-col bg-slate-900 text-white sticky top-0 h-screen z-30">
-        <div className="p-8">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <ShieldCheck size={24} />
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex w-80 flex-col bg-slate-900 text-white border-r border-slate-800 sticky top-0 h-screen z-50 p-10">
+        <div className="mb-16 px-2">
+          <Link to="/" className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
+              <Briefcase size={24} />
             </div>
-            <span className="text-xl font-black tracking-tighter uppercase">smart <span className="text-blue-500">Clerk</span></span>
+            <span className="text-2xl font-black tracking-tighter text-white uppercase">smart <span className="text-blue-500">Clerk</span></span>
           </Link>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 space-y-3">
           {navLinks.map((link) => (
             <NavLink 
               key={link.to} 
               to={link.to} 
               className={({ isActive }) => `
-                flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group
-                ${isActive ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}
+                w-full flex items-center gap-4 px-6 py-5 rounded-3xl transition-all duration-300 group
+                ${isActive 
+                  ? 'bg-blue-600 text-white shadow-2xl shadow-blue-600/20' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
               `}
             >
-              <link.icon size={20} />
-              <span className="font-bold text-sm tracking-wide">{link.label}</span>
+              <link.icon size={22} className="group-hover:scale-110 transition-transform" />
+              <span className="font-black text-sm uppercase tracking-widest">{link.label}</span>
             </NavLink>
           ))}
         </nav>
 
-        <div className="p-6 mt-auto">
+        <div className="mt-auto pt-8 border-t border-slate-800">
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-4 px-6 py-4 w-full rounded-2xl text-rose-400 font-bold hover:bg-rose-500/10 transition-all"
+            className="w-full flex items-center gap-4 px-6 py-5 rounded-3xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group"
           >
-            <LogOut size={20} />
-            <span>Logout</span>
+            <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
+            <span className="font-black text-sm uppercase tracking-widest">Logout</span>
           </button>
         </div>
       </aside>

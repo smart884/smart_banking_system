@@ -133,18 +133,28 @@ export default function Registration() {
         email: formData.email, 
         aadhaar: formData.aadhaar, 
         pan: formData.pan, 
-        userType: formData.role || "user", 
+        userType: formData.role || "customer", 
         role: formData.role || "customer", 
-        status: "pending", 
-        createdAt: new Date() 
+        status: "Active", 
+        createdAt: serverTimestamp() 
       }); 
 
       console.log("Firebase Registration Success ✅", user.uid);
       setSuccess(true);
+      alert("Registration Successful! Please login. ✅");
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
-      console.error("Registration error:", err);
-      setError(err.message || 'Registration failed.');
+      console.error("Registration error:", err.code || err.message);
+      
+      if (err.code === 'auth/email-already-in-use') {
+        setError("This email is already registered.");
+      } else if (err.code === 'auth/invalid-email') {
+        setError("Invalid email format.");
+      } else if (err.code === 'auth/weak-password') {
+        setError("Password is too weak.");
+      } else {
+        setError("Failed to create account: " + (err.message || "Unknown error"));
+      }
     } finally {
       setLoading(false);
     }

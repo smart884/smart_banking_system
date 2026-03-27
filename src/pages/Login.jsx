@@ -17,53 +17,36 @@ export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [loading, setLoading] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+  const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    if (!email || !password) {
+      setError("Please fill in all fields.");
+      return;
+    }
 
     try {
-      // 1. Authenticate and Fetch Profile from Firestore
-      await login(formData.email, formData.password);
+      setLoading(true);
+      setError("");
       
-      // Use a small timeout to ensure SecureAuthContext state is fully updated
-      setTimeout(() => {
-        const savedUser = localStorage.getItem('sb_static_user');
-        if (savedUser) {
-          const profile = JSON.parse(savedUser);
-          console.log("Redirecting based on database role:", profile.role);
-          
-          if (profile.role === 'clerk') {
-            navigate('/clerk/dashboard');
-          } else if (profile.role === 'manager') {
-            navigate('/manager/dashboard');
-          } else if (profile.role === 'admin') {
-            navigate('/admin/dashboard');
-          } else {
-            navigate('/user/dashboard');
-          }
-        } else {
-          // Fallback to email-based if profile not found
-          const email = formData.email.toLowerCase();
-          if (email.includes('clerk')) navigate('/clerk/dashboard');
-          else if (email.includes('manager')) navigate('/manager/dashboard');
-          else if (email.includes('admin')) navigate('/admin/dashboard');
-          else navigate('/user/dashboard');
-        }
-      }, 800);
+      const result = await login(email, password);
 
+      if (result.success) {
+        const role = result.profile.role;
+        // Redirect based on database-verified role
+        if (role === 'admin') navigate('/admin/dashboard');
+        else if (role === 'manager') navigate('/manager/dashboard');
+        else if (role === 'clerk') navigate('/clerk/dashboard');
+        else navigate('/user/dashboard');
+      } else {
+        setError(result.message || "Invalid credentials. Please check your email and password.");
+      }
     } catch (err) {
-      console.error('Login error:', err);
+      console.error("Login failed:", err);
+      setError("An unexpected error occurred. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -120,6 +103,12 @@ export default function Login() {
                     <p className="text-slate-500 font-medium">Enter your credentials to continue.</p>
                   </div>
 
+                  {error && (
+                    <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+                      {error}
+                    </div>
+                  )}
+
                   <form onSubmit={handleSubmit} className="space-y-8">
                     <div className="space-y-6">
                       <div className="space-y-2">
@@ -128,8 +117,8 @@ export default function Login() {
                           name="email" 
                           type="email" 
                           placeholder="rahul@smartbank.com" 
-                          value={formData.email} 
-                          onChange={handleChange} 
+                          value={email} 
+                          onChange={(e) => setEmail(e.target.value)} 
                           required 
                           className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
                         />
@@ -140,8 +129,8 @@ export default function Login() {
                           name="password" 
                           type="password" 
                           placeholder="••••••••" 
-                          value={formData.password} 
-                          onChange={handleChange} 
+                          value={password} 
+                          onChange={(e) => setPassword(e.target.value)} 
                           required 
                           className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
                         />

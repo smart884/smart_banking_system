@@ -83,6 +83,7 @@ export const AuthProvider = ({ children }) => {
         const data = doc.data();
         fetchedRequests.push({
           id: doc.id,
+          userId: data.userId, // Added userId
           userName: data.userName,
           type: data.type,
           category: data.category,

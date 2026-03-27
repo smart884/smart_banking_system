@@ -27,11 +27,12 @@ import Button from '../components/ui/Button';
  */
 
 export default function ClerkDashboard() {
-  const { userProfile, logout, requests, updateRequestStatus, clearRequests, populateDemoData } = useAuth();
+  const { userProfile, logout, requests, updateRequestStatus, clearRequests, populateDemoData, allUsers } = useAuth(); // Added allUsers
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedReq, setSelectedReq] = useState(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [kycResult, setKycResult] = useState(null); // Added kycResult state
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -95,6 +96,59 @@ export default function ClerkDashboard() {
     updateRequestStatus(id, status);
     showToast(`Request ${status === 'approved' ? 'approved ✅' : 'rejected ❌'}`);
     setSelectedReq(null);
+    setKycResult(null); // Reset KYC result
+  };
+
+  const handleVerifyKYC = () => {
+     if (!selectedReq) return;
+     
+     // Find user profile in allUsers using the userId from request
+     // Fallback to userName if userId is missing (for older requests)
+     const user = allUsers.find(u => 
+       u.id === selectedReq.userId || 
+       `${u.firstName} ${u.lastName}`.trim().toLowerCase() === selectedReq.userName.trim().toLowerCase()
+     );
+     
+     if (!user) {
+      showToast("Error: User profile not found in database! ❌");
+      setKycResult({ error: "User profile not found." });
+      return;
+    }
+
+    const details = selectedReq.details || {};
+    
+    // Compare details (normalization for case/spaces)
+    const verification = {
+      mobile: {
+        match: String(details.mobile || "").trim() === String(user.contactNumber || "").trim(),
+        submitted: details.mobile,
+        db: user.contactNumber
+      },
+      email: {
+        match: String(details.email || "").toLowerCase().trim() === String(user.email || "").toLowerCase().trim(),
+        submitted: details.email,
+        db: user.email
+      },
+      aadhar: {
+        match: String(details.aadhar || "").replace(/\s/g, "") === String(user.aadhaar || "").replace(/\s/g, ""),
+        submitted: details.aadhar,
+        db: user.aadhaar
+      },
+      pan: {
+        match: String(details.pan || "").toUpperCase().trim() === String(user.pan || "").toUpperCase().trim(),
+        submitted: details.pan,
+        db: user.pan
+      }
+    };
+
+    setKycResult(verification);
+    
+    const allMatch = Object.values(verification).every(v => v.match);
+    if (allMatch) {
+      showToast("KYC Verification Successful! All details match. ✅");
+    } else {
+      showToast("KYC Verification FAILED! Some details do not match. ❌");
+    }
   };
 
   const renderStats = () => {
@@ -143,58 +197,89 @@ export default function ClerkDashboard() {
     return (
       <Modal 
         isOpen={!!selectedReq} 
-        onClose={() => setSelectedReq(null)} 
-        title={`Request Details: ${selectedReq.type}`}
+        onClose={() => { setSelectedReq(null); setKycResult(null); }} 
+        title={`Review Request: ${selectedReq?.type}`}
       >
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-slate-50 rounded-2xl">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">User Name</p>
-              <p className="text-sm font-black text-slate-900">{selectedReq.userName}</p>
+        <div className="space-y-8">
+          <div className="p-8 bg-blue-50 rounded-3xl border border-blue-100 flex items-center gap-6">
+            <div className="w-16 h-16 rounded-[24px] bg-blue-600 text-white flex items-center justify-center shadow-xl">
+              <FileText size={32} />
             </div>
-            <div className="p-4 bg-slate-50 rounded-2xl">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
-              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
-                selectedReq.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
-                selectedReq.status === 'rejected' ? 'bg-rose-50 text-rose-600' :
-                'bg-amber-50 text-amber-600'
-              }`}>
-                {selectedReq.status}
-              </span>
-            </div>
-          </div>
-          
-          <div className="p-6 bg-slate-50 rounded-3xl space-y-4">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Submitted Data</p>
-            <div className="grid gap-3">
-              {Object.entries(selectedReq.details || {}).map(([key, value]) => (
-                <div key={key} className="flex justify-between border-b border-slate-200 pb-2">
-                  <span className="text-xs font-bold text-slate-500 capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
-                  <span className="text-xs font-black text-slate-900">{String(value)}</span>
-                </div>
-              ))}
+            <div>
+              <p className="text-sm font-black text-blue-900 uppercase tracking-widest mb-1">KYC Verification</p>
+              <p className="text-xs text-blue-600 font-medium">Please verify user documents before approval.</p>
             </div>
           </div>
 
-          {selectedReq.status === 'pending' && (
-            <div className="flex gap-4 pt-4">
+          <div className="grid grid-cols-2 gap-8">
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">User Name</p>
+              <p className="font-bold text-slate-900">{selectedReq?.userName}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Date</p>
+              <p className="font-bold text-slate-900">{selectedReq?.createdAt ? new Date(selectedReq.createdAt).toLocaleDateString() : 'N/A'}</p>
+            </div>
+            
+            {selectedReq?.details && Object.entries(selectedReq.details).map(([key, value]) => {
+              const label = key.replace(/([A-Z])/g, ' $1').trim();
+              const fieldKyc = kycResult?.[key.toLowerCase()];
+              
+              return (
+                <div key={key} className={`space-y-1 p-3 rounded-2xl transition-all ${fieldKyc ? (fieldKyc.match ? 'bg-emerald-50 border border-emerald-100' : 'bg-rose-50 border border-rose-100') : 'bg-slate-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+                    {fieldKyc && (
+                      fieldKyc.match 
+                        ? <CheckCircle2 size={14} className="text-emerald-500" /> 
+                        : <XCircle size={14} className="text-rose-500" />
+                    )}
+                  </div>
+                  <p className="font-bold text-slate-900">{String(value) || 'N/A'}</p>
+                  
+                  {fieldKyc && !fieldKyc.match && (
+                    <p className="text-[9px] font-bold text-rose-500 mt-1 uppercase tracking-tighter">
+                      Database: {fieldKyc.db || 'Not Found'}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
+            <Button 
+              full 
+              onClick={handleVerifyKYC}
+              className={`h-14 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl ${kycResult ? 'bg-slate-900' : 'bg-blue-600 shadow-blue-100'}`}
+            >
+              {kycResult ? 'Re-Verify KYC Documents' : 'Verify KYC Documents'}
+            </Button>
+            
+            {kycResult && (
+              <div className={`p-4 rounded-2xl text-center font-black text-xs uppercase tracking-[0.2em] animate-in zoom-in-95 ${Object.values(kycResult).every(v => v.match) ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                {Object.values(kycResult).every(v => v.match) ? '✅ All Data Matches Registration' : '❌ Verification Failed: Data Mismatch'}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <Button 
+                variant="secondary" 
+                full 
+                onClick={() => handleAction(selectedReq.id, selectedReq.category, 'rejected')}
+                className="h-14 rounded-2xl border-rose-100 text-rose-500 font-black uppercase tracking-widest text-xs hover:bg-rose-50"
+              >
+                Reject Request
+              </Button>
               <Button 
                 full 
-                className="bg-emerald-600 hover:bg-emerald-700 h-14 rounded-2xl font-black"
                 onClick={() => handleAction(selectedReq.id, selectedReq.category, 'approved')}
+                className="h-14 rounded-2xl bg-emerald-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-emerald-100"
               >
                 Approve Request
               </Button>
-              <Button 
-                full 
-                variant="outline"
-                className="border-rose-200 text-rose-600 hover:bg-rose-50 h-14 rounded-2xl font-black"
-                onClick={() => handleAction(selectedReq.id, selectedReq.category, 'rejected')}
-              >
-                Reject
-              </Button>
             </div>
-          )}
+          </div>
         </div>
       </Modal>
     );
@@ -471,65 +556,6 @@ export default function ClerkDashboard() {
           )}
         </main>
       </div>
-
-      {/* Details Modal */}
-      <Modal 
-        isOpen={!!selectedReq} 
-        onClose={() => setSelectedReq(null)} 
-        title={`Review Request: ${selectedReq?.type}`}
-      >
-        <div className="space-y-8">
-          <div className="p-8 bg-blue-50 rounded-3xl border border-blue-100 flex items-center gap-6">
-            <div className="w-16 h-16 rounded-[24px] bg-blue-600 text-white flex items-center justify-center shadow-xl">
-              <FileText size={32} />
-            </div>
-            <div>
-              <p className="text-sm font-black text-blue-900 uppercase tracking-widest mb-1">KYC Verification</p>
-              <p className="text-xs text-blue-600 font-medium">Please verify user documents before approval.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-8">
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">User Name</p>
-              <p className="font-bold text-slate-900">{selectedReq?.userName}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Date</p>
-              <p className="font-bold text-slate-900">{selectedReq?.createdAt ? new Date(selectedReq.createdAt).toLocaleDateString() : 'N/A'}</p>
-            </div>
-            {selectedReq?.details && Object.entries(selectedReq.details).map(([key, value]) => (
-              <div key={key} className="space-y-1">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                <p className="font-bold text-slate-900">{String(value) || 'N/A'}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="pt-6 border-t border-slate-100 flex flex-col gap-4">
-            <Button full className="h-14 rounded-2xl bg-blue-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-100">
-              Verify KYC Documents
-            </Button>
-            <div className="grid grid-cols-2 gap-4">
-              <Button 
-                variant="secondary" 
-                full 
-                onClick={() => handleAction(selectedReq.id, selectedReq.category, 'rejected')}
-                className="h-14 rounded-2xl border-rose-100 text-rose-500 font-black uppercase tracking-widest text-xs hover:bg-rose-50"
-              >
-                Reject Request
-              </Button>
-              <Button 
-                full 
-                onClick={() => handleAction(selectedReq.id, selectedReq.category, 'approved')}
-                className="h-14 rounded-2xl bg-emerald-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-emerald-100"
-              >
-                Approve Request
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
 
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (

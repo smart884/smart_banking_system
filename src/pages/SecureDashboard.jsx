@@ -134,11 +134,35 @@ export default function SecureDashboard() {
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // VALIDATION: Initial Deposit for New Account must be >= 500
+    // VALIDATION: New Account Request
     if (modal.type === 'new-account') {
       const deposit = parseFloat(formData.deposit);
       if (isNaN(deposit) || deposit < 500) {
         setFormError('Initial deposit must be at least ₹500.');
+        return;
+      }
+
+      // Mobile validation (10 digits)
+      if (!formData.mobile || !/^\d{10}$/.test(formData.mobile)) {
+        setFormError('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+
+      // Email validation
+      if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        setFormError('Please enter a valid email address.');
+        return;
+      }
+
+      // Aadhaar validation (12 digits)
+      if (!formData.aadhar || !/^\d{12}$/.test(formData.aadhar)) {
+        setFormError('Please enter a valid 12-digit Aadhaar number.');
+        return;
+      }
+
+      // PAN validation (10 characters alphanumeric)
+      if (!formData.pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(formData.pan.toUpperCase())) {
+        setFormError('Please enter a valid PAN card number (e.g., ABCDE1234F).');
         return;
       }
     }
@@ -452,26 +476,30 @@ export default function SecureDashboard() {
               </div>
             )}
 
-            {/* Pending Requests Section */}
-            {userRequests.some(r => r.status === 'pending') && (
+            {/* Pending & Rejected Requests Section */}
+            {userRequests.some(r => r.status === 'pending' || r.status === 'rejected') && (
               <div className="mt-16">
                 <div className="flex items-center gap-4 px-2 mb-8">
                   <div className="w-1.5 h-8 bg-amber-500 rounded-full" />
-                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em]">Pending Verification</h3>
+                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em]">Application Status</h3>
                 </div>
                 <div className="space-y-4">
-                  {userRequests.filter(r => r.status === 'pending').map(req => (
+                  {userRequests.filter(r => r.status === 'pending' || r.status === 'rejected').map(req => (
                     <div key={req.id} className="bg-white rounded-3xl p-6 border border-slate-100 flex items-center justify-between shadow-sm">
                       <div className="flex items-center gap-6">
-                        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500">
-                          <Clock size={24} />
+                        <div className={`w-12 h-12 ${req.status === 'rejected' ? 'bg-rose-50 text-rose-500' : 'bg-amber-50 text-amber-500'} rounded-2xl flex items-center justify-center`}>
+                          {req.status === 'rejected' ? <X size={24} /> : <Clock size={24} />}
                         </div>
                         <div>
                           <p className="font-black text-slate-900">{req.type}</p>
                           <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-1">Submitted: {new Date(req.createdAt).toLocaleDateString()}</p>
                         </div>
                       </div>
-                      <span className="px-4 py-2 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase tracking-widest">Awaiting Review</span>
+                      <span className={`px-4 py-2 ${
+                        req.status === 'rejected' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
+                      } rounded-full text-[10px] font-black uppercase tracking-widest`}>
+                        {req.status === 'rejected' ? 'Rejected' : 'Awaiting Review'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -694,17 +722,25 @@ export default function SecureDashboard() {
           {/* USE CASE: Request new account */}
           {modal.type === 'new-account' && (
             <>
-              <div className="space-y-2">
-                <label className="label">Account Type</label>
-                <select name="accountType" onChange={handleInputChange} className="input" required>
-                  <option value="">Select type</option>
-                  <option value="saving">Saving Account</option>
-                  <option value="current">Current Account</option>
-                  <option value="fd">Fix Deposit</option>
-                  <option value="joint">Joint Account</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="label">Account Type</label>
+                  <select name="accountType" onChange={handleInputChange} className="input" required>
+                    <option value="">Select type</option>
+                    <option value="saving">Saving Account</option>
+                    <option value="current">Current Account</option>
+                    <option value="fd">Fix Deposit</option>
+                    <option value="joint">Joint Account</option>
+                  </select>
+                </div>
+                <Input label="Initial Deposit (₹)" name="deposit" type="number" placeholder="Min. ₹500" onChange={handleInputChange} required />
+                
+                <Input label="Mobile Number" name="mobile" type="tel" placeholder="10-digit number" onChange={handleInputChange} required />
+                <Input label="Email Address" name="email" type="email" placeholder="name@example.com" onChange={handleInputChange} required />
+                
+                <Input label="Aadhaar Number" name="aadhar" type="text" placeholder="12-digit number" onChange={handleInputChange} required />
+                <Input label="PAN Card Number" name="pan" type="text" placeholder="ABCDE1234F" onChange={handleInputChange} required />
               </div>
-              <Input label="Initial Deposit (₹)" name="deposit" type="number" placeholder="Min. ₹500" onChange={handleInputChange} required />
               <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <p className="text-xs text-blue-600 font-bold">Includes: Automated KYC Document Verification</p>
               </div>

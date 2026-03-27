@@ -29,27 +29,13 @@ import Button from '../components/ui/Button';
  */
 
 export default function AdminDashboard() {
-  const { userProfile, logout } = useAuth();
+  const { userProfile, logout, allUsers, systemSettings, updateSystemSettings, addUser, deleteUser } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   // --- States for Fully Functional Dashboard ---
-  const [users, setUsers] = useState([
-    { id: 1, name: 'John Doe', email: 'john@example.com', role: 'Customer', status: 'Active' },
-    { id: 2, name: 'Alice Smith', email: 'alice@clerk.com', role: 'Clerk', status: 'Active' },
-    { id: 3, name: 'Bob Johnson', email: 'bob@manager.com', role: 'Manager', status: 'On Leave' },
-    { id: 4, name: 'Admin One', email: 'admin@smartbank.com', role: 'Admin', status: 'Active' },
-  ]);
-
-  const [securitySettings, setSecuritySettings] = useState({
-    ipWhitelisting: true,
-    twoFactorAuth: true,
-    sslTls: true,
-    dataEncryption: true
-  });
-
   const [backupInfo, setBackupInfo] = useState({
     lastBackup: 'Today, 14:00',
     storageUsed: '12.4 GB',
@@ -58,7 +44,7 @@ export default function AdminDashboard() {
   });
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', email: '', role: 'Customer' });
+  const [newUser, setNewUser] = useState({ firstName: '', email: '', role: 'customer' });
 
   // --- Handlers ---
   const showToast = (message) => {
@@ -71,29 +57,25 @@ export default function AdminDashboard() {
     navigate('/login');
   };
 
-  const handleAddUser = (e) => {
+  const handleAddUser = async (e) => {
     e.preventDefault();
-    if (!newUser.name || !newUser.email) return;
-    const userToAdd = {
-      ...newUser,
-      id: Date.now(),
-      status: 'Active'
-    };
-    setUsers([userToAdd, ...users]);
+    if (!newUser.firstName || !newUser.email) return;
+    await addUser(newUser);
     setIsAddModalOpen(false);
-    setNewUser({ name: '', email: '', role: 'Customer' });
-    showToast(`New user ${userToAdd.name} added! 👤`);
+    setNewUser({ firstName: '', email: '', role: 'customer' });
+    showToast(`New user ${newUser.firstName} added! 👤`);
   };
 
-  const handleDeleteUser = (id) => {
+  const handleDeleteUser = async (id) => {
     if (window.confirm("Are you sure you want to delete this user?")) {
-      setUsers(users.filter(u => u.id !== id));
+      await deleteUser(id);
       showToast("User deleted successfully 🗑️");
     }
   };
 
-  const toggleSecurity = (key) => {
-    setSecuritySettings(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleSecurity = async (key) => {
+    const updated = { ...systemSettings, [key]: !systemSettings[key] };
+    await updateSystemSettings(updated);
     showToast("Security policy updated 🔒");
   };
 
@@ -124,17 +106,17 @@ export default function AdminDashboard() {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
-              <Users size={24} />
+              <Users size="24" />
             </div>
             <span className="text-green-500 text-sm font-bold">+12%</span>
           </div>
           <h3 className="text-slate-500 text-sm font-medium">Total Users</h3>
-          <p className="text-2xl font-bold text-slate-900">{users.length}</p>
+          <p className="text-2xl font-bold text-slate-900">{allUsers.length}</p>
         </div>
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 bg-green-100 rounded-lg text-green-600">
-              <Shield size={24} />
+              <Shield size="24" />
             </div>
             <span className="text-blue-500 text-sm font-bold text-xs uppercase">Secure</span>
           </div>
@@ -144,7 +126,7 @@ export default function AdminDashboard() {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 bg-purple-100 rounded-lg text-purple-600">
-              <Database size={24} />
+              <Database size="24" />
             </div>
             <span className="text-slate-400 text-sm font-medium">{backupInfo.lastBackup}</span>
           </div>
@@ -200,33 +182,30 @@ export default function AdminDashboard() {
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
               <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {users.map((user) => (
+            {allUsers.map((user) => (
               <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{user.name}</p>
+                    <p className="text-sm font-bold text-slate-900">{user.firstName} {user.lastName}</p>
                     <p className="text-xs text-slate-500">{user.email}</p>
                   </div>
                 </td>
+                <td className="px-6 py-4 text-sm text-slate-600 uppercase font-medium">{user.role}</td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-slate-600">{user.role}</span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase tracking-widest ${
                     user.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                   }`}>
-                    {user.status}
+                    {user.status || 'Active'}
                   </span>
                 </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => showToast(`Viewing profile: ${user.name}`)} className="p-1 text-slate-400 hover:text-blue-600 transition-colors"><Eye size={16} /></button>
-                    <button onClick={() => handleDeleteUser(user.id)} className="p-1 text-slate-400 hover:text-red-600 transition-colors"><XCircle size={16} /></button>
-                  </div>
+                <td className="px-6 py-4 text-right space-x-2">
+                  <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+                    <XCircle size={18} />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -240,56 +219,30 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-slate-800">System Security</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-red-100 rounded-lg text-red-600">
-              <Lock size={24} />
+        {[
+          { key: 'ipWhitelisting', label: 'IP Whitelisting', desc: 'Allow access only from authorized IP addresses.' },
+          { key: 'twoFactorAuth', label: 'Mandatory 2FA', desc: 'Enforce two-factor authentication for all employees.' },
+          { key: 'sslTls', label: 'SSL/TLS 1.3', desc: 'Require high-grade encryption for all connections.' },
+          { key: 'dataEncryption', label: 'Data Encryption', desc: 'Encrypt sensitive customer data at rest.' },
+        ].map((item) => (
+          <div key={item.key} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm flex items-start justify-between">
+            <div className="flex gap-4">
+              <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                <Lock size={24} />
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-900">{item.label}</h4>
+                <p className="text-sm text-slate-500 mt-1">{item.desc}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-900">Firewall & Access</h3>
-              <p className="text-sm text-slate-500">Manage network security policies</p>
-            </div>
+            <button 
+              onClick={() => toggleSecurity(item.key)}
+              className={`w-12 h-6 rounded-full transition-colors relative ${systemSettings?.[item.key] ? 'bg-blue-600' : 'bg-slate-200'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${systemSettings?.[item.key] ? 'right-1' : 'left-1'}`} />
+            </button>
           </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group cursor-pointer" onClick={() => toggleSecurity('ipWhitelisting')}>
-              <span className="text-sm font-medium">IP Whitelisting</span>
-              <span className={`text-xs font-bold ${securitySettings.ipWhitelisting ? 'text-green-600' : 'text-slate-400'}`}>
-                {securitySettings.ipWhitelisting ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group cursor-pointer" onClick={() => toggleSecurity('twoFactorAuth')}>
-              <span className="text-sm font-medium">2FA Enforcement</span>
-              <span className={`text-xs font-bold ${securitySettings.twoFactorAuth ? 'text-green-600' : 'text-slate-400'}`}>
-                {securitySettings.twoFactorAuth ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-blue-100 rounded-lg text-blue-600">
-              <ShieldCheck size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900">Encryption Settings</h3>
-              <p className="text-sm text-slate-500">Database and transit security</p>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group cursor-pointer" onClick={() => toggleSecurity('sslTls')}>
-              <span className="text-sm font-medium">SSL/TLS 1.3</span>
-              <span className={`text-xs font-bold ${securitySettings.sslTls ? 'text-green-600' : 'text-slate-400'}`}>
-                {securitySettings.sslTls ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group cursor-pointer" onClick={() => toggleSecurity('dataEncryption')}>
-              <span className="text-sm font-medium">Data-at-rest encryption</span>
-              <span className={`text-xs font-bold ${securitySettings.dataEncryption ? 'text-green-600' : 'text-slate-400'}`}>
-                {securitySettings.dataEncryption ? 'AES-256' : 'Disabled'}
-              </span>
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );

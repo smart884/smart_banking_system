@@ -39,6 +39,8 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [requests, setRequests] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [systemSettings, setSystemSettings] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // 1. Listen for Auth Changes & Firestore Real-time Updates
@@ -51,8 +53,8 @@ export const AuthProvider = ({ children }) => {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
             const profile = userDoc.data();
-            setUserProfile(profile);
-            localStorage.setItem('sb_static_user', JSON.stringify(profile));
+            setUserProfile({ ...profile, uid: user.uid });
+            localStorage.setItem('sb_static_user', JSON.stringify({ ...profile, uid: user.uid }));
           } else {
             // Fallback for demo: guess role from email if doc doesn't exist
             let role = 'customer';
@@ -104,9 +106,37 @@ export const AuthProvider = ({ children }) => {
       console.log(`[Firebase] Synced ${fetchedRequests.length} requests from Firestore 🔥`);
     });
 
+    // Listen for Firestore Users (Real-time)
+    const usersRef = collection(db, 'users');
+    const unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
+      const fetchedUsers = [];
+      snapshot.forEach((doc) => {
+        fetchedUsers.push({ id: doc.id, ...doc.data() });
+      });
+      setAllUsers(fetchedUsers);
+    });
+
+    // Listen for System Settings (Real-time)
+    const settingsRef = doc(db, 'system_settings', 'global');
+    const unsubscribeSettings = onSnapshot(settingsRef, (doc) => {
+      if (doc.exists()) {
+        setSystemSettings(doc.data());
+      } else {
+        // Default settings
+        setSystemSettings({
+          ipWhitelisting: true,
+          twoFactorAuth: true,
+          sslTls: true,
+          dataEncryption: true
+        });
+      }
+    });
+
     return () => {
       unsubscribeAuth();
       unsubscribeFirestore();
+      unsubscribeUsers();
+      unsubscribeSettings();
     };
   }, []);
 
@@ -214,6 +244,38 @@ export const AuthProvider = ({ children }) => {
     requests,
     addRequest,
     updateRequestStatus,
+    allUsers,
+    systemSettings,
+    updateSystemSettings: async (newSettings) => {
+      try {
+        const docRef = doc(db, 'system_settings', 'global');
+        await updateDoc(docRef, newSettings);
+      } catch (err) {
+        console.error("Failed to update system settings:", err);
+      }
+    },
+    addUser: async (userData) => {
+      try {
+        await addDoc(collection(db, 'users'), {
+          ...userData,
+          status: 'Active',
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Failed to add user:", err);
+      }
+    },
+    deleteUser: async (id) => {
+      try {
+        // We can't easily delete from Auth via client, but we can delete from Firestore
+        // or just mark as deleted. For simplicity in this demo, we'll delete the Firestore doc.
+        // In a real app, you'd use a Cloud Function.
+        const { deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, 'users', id));
+      } catch (err) {
+        console.error("Failed to delete user:", err);
+      }
+    },
     forceSync: () => {}, // Handled by onSnapshot
     clearRequests: () => {
       console.warn("Bulk clear not allowed on Firestore via client.");

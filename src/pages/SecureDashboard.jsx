@@ -220,7 +220,7 @@ export default function SecureDashboard() {
                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">Transaction History</h3>
                       <p className="text-sm font-medium text-slate-500 mt-1">Detailed history across all protocols</p>
                     </div>
-                    <button className="px-6 py-3 bg-slate-50 hover:bg-slate-100 rounded-2xl text-xs font-black text-slate-900 tracking-widest transition-all">VIEW ALL</button>
+                    <button onClick={() => setActiveTab('payments')} className="px-6 py-3 bg-slate-50 hover:bg-slate-100 rounded-2xl text-xs font-black text-slate-900 tracking-widest transition-all">VIEW ALL</button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -256,7 +256,7 @@ export default function SecureDashboard() {
               {/* Right Column: Cards & Promotions */}
               <div className="space-y-10">
                 {/* Premium Card Display */}
-                <div className="relative group perspective-1000">
+                <div className="relative group perspective-1000 cursor-pointer" onClick={() => setActiveTab('cards')}>
                   <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[40px] p-10 h-[280px] shadow-2xl flex flex-col justify-between overflow-hidden transform group-hover:rotate-y-12 transition-all duration-700 ring-1 ring-white/10">
                     <div className="absolute top-0 right-0 p-32 bg-blue-600/20 rounded-full blur-[80px] -mr-24 -mt-24"></div>
                     <div className="relative z-10 flex justify-between items-start">
@@ -287,7 +287,7 @@ export default function SecureDashboard() {
                 <div className="bg-white rounded-[40px] p-10 shadow-xl border border-slate-50">
                   <div className="flex items-center justify-between mb-8">
                     <h4 className="text-xl font-black text-slate-900 tracking-tight">Savings Goal</h4>
-                    <PlusCircle className="text-blue-600 cursor-pointer" size={24} />
+                    <PlusCircle className="text-blue-600 cursor-pointer" size={24} onClick={() => showToast("Saving goals are being initialized... 🏦")} />
                   </div>
                   <div className="flex items-center gap-5 mb-6">
                     <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
@@ -312,7 +312,7 @@ export default function SecureDashboard() {
                   <div className="relative z-10">
                     <h4 className="text-xl font-black mb-4">Need Assistance?</h4>
                     <p className="text-blue-100 text-sm font-medium leading-relaxed mb-8">Our priority concierge is available 24/7 for Elite members.</p>
-                    <button className="w-full py-4 bg-white text-blue-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Chat with Concierge</button>
+                    <button onClick={() => showToast("Connecting to elite support... 🎧")} className="w-full py-4 bg-white text-blue-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">Chat with Concierge</button>
                   </div>
                 </div>
               </div>
@@ -411,6 +411,95 @@ export default function SecureDashboard() {
                 </div>
               </div>
             )}
+          </div>
+        );
+      case 'cards':
+        return (
+          <div className="space-y-10">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">My Cards</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[40px] p-10 h-[280px] shadow-2xl relative overflow-hidden flex flex-col justify-between">
+                <div className="absolute top-0 right-0 p-32 bg-blue-600/20 rounded-full blur-[80px] -mr-24 -mt-24"></div>
+                <div className="relative z-10 flex justify-between items-start text-white">
+                  <span className="text-[10px] font-black tracking-[0.3em] uppercase">SmartBank Black</span>
+                  <div className="w-12 h-8 bg-yellow-500/20 border border-yellow-500/30 rounded" />
+                </div>
+                <div className="relative z-10 text-white">
+                  <p className="text-xl font-mono tracking-[0.3em] mb-6">•••• •••• •••• 8842</p>
+                  <div className="flex justify-between items-end">
+                    <p className="text-sm font-bold uppercase tracking-widest">{userProfile?.firstName} {userProfile?.lastName}</p>
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/1280px-Mastercard-logo.svg.png" className="h-8 opacity-80" alt="Mastercard" />
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => openModal('request-services', 'Request New Card')} className="border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center gap-4 hover:border-blue-400 hover:bg-blue-50 transition-all p-10">
+                <PlusCircle size={40} className="text-slate-300" />
+                <p className="font-black text-slate-400 uppercase tracking-widest">Add New Card</p>
+              </button>
+            </div>
+          </div>
+        );
+      case 'payments':
+        return (
+          <div className="space-y-10">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tighter text-left">Payment Center</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <button onClick={() => openModal('bill-pay', 'Utility Bill Payment')} className="p-10 bg-white rounded-[40px] shadow-xl border border-slate-100 flex flex-col items-center gap-6 hover:-translate-y-2 transition-all">
+                <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600"><Zap size={40} /></div>
+                <p className="font-black text-slate-900 uppercase tracking-widest">Utility Bills</p>
+              </button>
+              <button onClick={() => openModal('transfer', 'Send Money')} className="p-10 bg-white rounded-[40px] shadow-xl border border-slate-100 flex flex-col items-center gap-6 hover:-translate-y-2 transition-all">
+                <div className="w-20 h-20 bg-green-50 rounded-3xl flex items-center justify-center text-green-600"><Send size={40} /></div>
+                <p className="font-black text-slate-900 uppercase tracking-widest">Transfers</p>
+              </button>
+              <button onClick={() => openModal('bill-pay', 'Mobile Recharge')} className="p-10 bg-white rounded-[40px] shadow-xl border border-slate-100 flex flex-col items-center gap-6 hover:-translate-y-2 transition-all">
+                <div className="w-20 h-20 bg-purple-50 rounded-3xl flex items-center justify-center text-purple-600"><Smartphone size={40} /></div>
+                <p className="font-black text-slate-900 uppercase tracking-widest">Recharge</p>
+              </button>
+            </div>
+            <div className="bg-white rounded-[40px] shadow-xl border border-slate-100 overflow-hidden">
+              <div className="p-8 border-b border-slate-50"><h3 className="text-xl font-black text-slate-900">Recent Payments</h3></div>
+              <div className="p-10 text-center text-slate-400 font-medium">No recent payments found.</div>
+            </div>
+          </div>
+        );
+      case 'analytics':
+        return (
+          <div className="space-y-10">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Financial Insights</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="bg-white rounded-[40px] p-10 shadow-xl border border-slate-100">
+                <h3 className="text-xl font-black text-slate-900 mb-8">Spending Analysis</h3>
+                <div className="space-y-6">
+                  {[
+                    { label: 'Shopping', amount: '₹45,000', color: 'bg-blue-600', width: '65%' },
+                    { label: 'Food & Dining', amount: '₹12,400', color: 'bg-emerald-500', width: '25%' },
+                    { label: 'Utilities', amount: '₹8,200', color: 'bg-amber-500', width: '15%' },
+                  ].map((item, i) => (
+                    <div key={i}>
+                      <div className="flex justify-between mb-2">
+                        <span className="font-bold text-slate-900">{item.label}</span>
+                        <span className="font-black text-slate-900">{item.amount}</span>
+                      </div>
+                      <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden">
+                        <div className={`h-full ${item.color} rounded-full`} style={{ width: item.width }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-slate-900 rounded-[40px] p-10 text-white shadow-2xl">
+                <h3 className="text-xl font-black mb-8">Wealth Growth</h3>
+                <div className="h-48 flex items-end gap-2">
+                  {[40, 60, 45, 80, 55, 90, 70].map((h, i) => (
+                    <div key={i} className="flex-1 bg-blue-500 rounded-t-lg transition-all hover:bg-blue-400 cursor-pointer" style={{ height: `${h}%` }} />
+                  ))}
+                </div>
+                <div className="mt-6 flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
+              </div>
+            </div>
           </div>
         );
       default:

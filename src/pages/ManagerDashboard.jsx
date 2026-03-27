@@ -34,6 +34,7 @@ export default function ManagerDashboard() {
   const [toast, setToast] = useState(null);
   const [selectedReq, setSelectedReq] = useState(null);
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -56,10 +57,180 @@ export default function ManagerDashboard() {
   };
 
   const navLinks = [
-    { to: '/manager/dashboard', label: 'Overview', icon: LayoutDashboard },
-    { to: '/manager/requests', label: 'All Requests', icon: ShieldAlert },
-    { to: '/manager/reports', label: 'Analytics', icon: BarChart3 },
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'requests', label: 'All Requests', icon: ShieldAlert },
+    { id: 'reports', label: 'Analytics', icon: BarChart3 },
   ];
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+           <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+              {/* Request Management Table */}
+              <div className="xl:col-span-2 space-y-6">
+                 <div className="flex items-center justify-between px-2">
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                       <TrendingUp className="text-blue-600" size={24} /> 
+                       Active Pipeline
+                    </h3>
+                    <button onClick={() => setActiveTab('reports')} className="px-5 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">View Analytics</button>
+                 </div>
+
+                 <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                       <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100">
+                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entity Name</th>
+                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Service Protocol</th>
+                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Operational Action</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                          {requests.length === 0 ? (
+                            <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests in active pipeline.</td></tr>
+                          ) : requests.slice(0, 5).map((req) => (
+                            <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                               <td className="px-8 py-6">
+                                  <div className="flex items-center gap-4">
+                                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName[0]}</div>
+                                     <p className="text-sm font-black text-slate-900">{req.userName}</p>
+                                  </div>
+                               </td>
+                               <td className="px-8 py-6">
+                                  <p className="text-sm font-bold text-slate-600">{req.type}</p>
+                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.category}</p>
+                               </td>
+                               <td className="px-8 py-6">
+                                  <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                                    req.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                    req.status === 'rejected' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
+                                    'bg-amber-50 text-amber-600 border border-amber-100'
+                                  }`}>
+                                    {req.status}
+                                  </span>
+                               </td>
+                               <td className="px-8 py-6 text-right">
+                                  <button 
+                                    onClick={() => setSelectedReq(req)}
+                                    className="px-5 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
+                                  >
+                                    Review Core
+                                  </button>
+                               </td>
+                            </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+
+              {/* Sidebar Reports */}
+              <div className="space-y-10">
+                 <div className="p-10 bg-gradient-to-br from-blue-700 to-indigo-900 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-24 bg-white/10 rounded-full blur-3xl -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
+                    <div className="relative z-10">
+                       <h4 className="text-xl font-black mb-6 tracking-tight">Intelligence Report</h4>
+                       <div className="space-y-6">
+                          {['Core Efficiency', 'Security Audit', 'User Growth'].map((item, i) => (
+                            <div key={i} className="space-y-2">
+                               <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-blue-200">
+                                  <span>{item}</span>
+                                  <span>{95 - i * 8}%</span>
+                               </div>
+                               <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                                  <div className="h-full bg-white rounded-full shadow-lg" style={{ width: `${95 - i * 8}%` }}></div>
+                               </div>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="p-10 bg-white rounded-[48px] border border-slate-100 shadow-xl space-y-8">
+                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                       <Users className="text-blue-600" size={20} /> Team Capacity
+                    </h4>
+                    <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
+                       <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-blue-600 shadow-sm font-black">12</div>
+                       <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Active Clerks</p>
+                          <p className="text-sm font-bold text-slate-900">Normal Operation</p>
+                       </div>
+                    </div>
+                    <p className="text-xs font-medium text-slate-500 leading-relaxed italic">The clerk team is currently processing at 92% efficiency with zero backlogs reported.</p>
+                 </div>
+              </div>
+           </div>
+        );
+      case 'requests':
+        return (
+          <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
+            <div className="p-10 border-b border-slate-100 flex justify-between items-center">
+               <h3 className="text-2xl font-black text-slate-900 uppercase tracking-widest">All System Requests</h3>
+               <span className="px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest">{requests.length} Total</span>
+            </div>
+            <table className="w-full text-left border-collapse">
+               <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                     <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">User</th>
+                     <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Type</th>
+                     <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                     <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                     <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                  </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-50">
+                  {requests.map((req) => (
+                    <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                       <td className="px-8 py-6 font-black text-slate-900">{req.userName}</td>
+                       <td className="px-8 py-6 font-bold text-slate-600">{req.type}</td>
+                       <td className="px-8 py-6 text-sm text-slate-500 font-medium">{new Date(req.createdAt).toLocaleDateString()}</td>
+                       <td className="px-8 py-6">
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                            req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
+                            req.status === 'rejected' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
+                          }`}>
+                            {req.status}
+                          </span>
+                       </td>
+                       <td className="px-8 py-6 text-right">
+                          <button onClick={() => setSelectedReq(req)} className="p-3 bg-slate-100 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"><Eye size={18} /></button>
+                       </td>
+                    </tr>
+                  ))}
+               </tbody>
+            </table>
+          </div>
+        );
+      case 'reports':
+        return (
+          <div className="space-y-10">
+             <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter mb-10">Manager Analytics</h2>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm">
+                   <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest">Revenue Growth</h3>
+                   <div className="flex items-end gap-2 h-48">
+                      {[40, 55, 70, 60, 85, 75, 95].map((h, i) => (
+                        <div key={i} className="flex-1 bg-blue-600 rounded-t-xl" style={{ height: `${h}%` }} />
+                      ))}
+                   </div>
+                </div>
+                <div className="bg-white rounded-[40px] p-10 border border-slate-100 shadow-sm">
+                   <h3 className="text-xl font-black text-slate-900 mb-6 uppercase tracking-widest">Risk Index</h3>
+                   <div className="flex items-end gap-2 h-48">
+                      {[20, 15, 25, 10, 30, 20, 15].map((h, i) => (
+                        <div key={i} className="flex-1 bg-rose-500 rounded-t-xl" style={{ height: `${h}%` }} />
+                      ))}
+                   </div>
+                </div>
+             </div>
+          </div>
+        );
+      default: return null;
+    }
+  };
 
   const renderStats = () => {
     const total = requests.length;
@@ -180,21 +351,21 @@ export default function ManagerDashboard() {
           <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl">
             <ShieldCheck size={24} />
           </div>
-          <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Smart<span className="text-blue-600">Admin</span></span>
+          <span className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Smart<span className="text-blue-600">Manager</span></span>
         </div>
 
         <nav className="flex-1 space-y-3">
           {navLinks.map((link) => (
             <button
-              key={link.to}
-              onClick={() => navigate(link.to)}
+              key={link.id}
+              onClick={() => setActiveTab(link.id)}
               className={`w-full flex items-center gap-4 px-6 py-5 rounded-3xl transition-all duration-300 group ${
-                location.pathname === link.to 
+                activeTab === link.id 
                   ? 'bg-blue-600 text-white shadow-2xl shadow-blue-200' 
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
-              <link.icon size={22} className={location.pathname === link.to ? 'text-white' : 'group-hover:scale-110 transition-transform'} />
+              <link.icon size={22} className={activeTab === link.id ? 'text-white' : 'group-hover:scale-110 transition-transform'} />
               <span className="font-black text-sm uppercase tracking-widest">{link.label}</span>
             </button>
           ))}
@@ -241,106 +412,8 @@ export default function ManagerDashboard() {
 
         {/* Dashboard Content */}
         <main className="flex-1 p-10 max-w-[1600px] mx-auto w-full">
-           {renderStats()}
-
-           {/* Central Intelligence Grid */}
-           <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
-              {/* Request Management Table */}
-              <div className="xl:col-span-2 space-y-6">
-                 <div className="flex items-center justify-between px-2">
-                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                       <TrendingUp className="text-blue-600" size={24} /> 
-                       Active Pipeline
-                    </h3>
-                    <button className="px-5 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all">View Analytics</button>
-                 </div>
-
-                 <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                       <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100">
-                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Entity Name</th>
-                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Service Protocol</th>
-                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                             <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Operational Action</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-50">
-                          {requests.length === 0 ? (
-                            <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests in active pipeline.</td></tr>
-                          ) : requests.map((req) => (
-                            <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
-                               <td className="px-8 py-6">
-                                  <div className="flex items-center gap-4">
-                                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName[0]}</div>
-                                     <p className="text-sm font-black text-slate-900">{req.userName}</p>
-                                  </div>
-                               </td>
-                               <td className="px-8 py-6">
-                                  <p className="text-sm font-bold text-slate-600">{req.type}</p>
-                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.category}</p>
-                               </td>
-                               <td className="px-8 py-6">
-                                  <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
-                                    req.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                    req.status === 'rejected' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
-                                    'bg-amber-50 text-amber-600 border border-amber-100'
-                                  }`}>
-                                    {req.status}
-                                  </span>
-                               </td>
-                               <td className="px-8 py-6 text-right">
-                                  <button 
-                                    onClick={() => setSelectedReq(req)}
-                                    className="px-5 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
-                                  >
-                                    Review Core
-                                  </button>
-                               </td>
-                            </tr>
-                          ))}
-                       </tbody>
-                    </table>
-                 </div>
-              </div>
-
-              {/* Sidebar Reports */}
-              <div className="space-y-10">
-                 <div className="p-10 bg-gradient-to-br from-blue-700 to-indigo-900 rounded-[48px] text-white shadow-2xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-24 bg-white/10 rounded-full blur-3xl -mr-12 -mt-12 group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="relative z-10">
-                       <h4 className="text-xl font-black mb-6 tracking-tight">Intelligence Report</h4>
-                       <div className="space-y-6">
-                          {['Core Efficiency', 'Security Audit', 'User Growth'].map((item, i) => (
-                            <div key={i} className="space-y-2">
-                               <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-blue-200">
-                                  <span>{item}</span>
-                                  <span>{95 - i * 8}%</span>
-                               </div>
-                               <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                                  <div className="h-full bg-white rounded-full shadow-lg" style={{ width: `${95 - i * 8}%` }}></div>
-                               </div>
-                            </div>
-                          ))}
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="p-10 bg-white rounded-[48px] border border-slate-100 shadow-xl space-y-8">
-                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
-                       <Users className="text-blue-600" size={20} /> Team Capacity
-                    </h4>
-                    <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
-                       <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-blue-600 shadow-sm font-black">12</div>
-                       <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Active Clerks</p>
-                          <p className="text-sm font-bold text-slate-900">Normal Operation</p>
-                       </div>
-                    </div>
-                    <p className="text-xs font-medium text-slate-500 leading-relaxed italic">The clerk team is currently processing at 92% efficiency with zero backlogs reported.</p>
-                 </div>
-              </div>
-           </div>
+           {activeTab === 'dashboard' && renderStats()}
+           {renderContent()}
         </main>
       </div>
 
@@ -352,13 +425,13 @@ export default function ManagerDashboard() {
              <div className="flex items-center justify-between mb-16">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white"><ShieldCheck size={24} /></div>
-                  <span className="text-xl font-black text-slate-900 tracking-tighter uppercase">Smart Admin</span>
+                  <span className="text-xl font-black text-slate-900 tracking-tighter uppercase">Smart Manager</span>
                 </div>
                 <button onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-xl bg-slate-100"><X size={24} /></button>
              </div>
              <nav className="flex-1 space-y-4">
                 {navLinks.map((link) => (
-                  <button key={link.to} onClick={() => { navigate(link.to); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-5 rounded-3xl transition-all ${location.pathname === link.to ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-slate-50 text-slate-500'}`}>
+                  <button key={link.id} onClick={() => { setActiveTab(link.id); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-5 rounded-3xl transition-all ${activeTab === link.id ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-slate-50 text-slate-500'}`}>
                     <link.icon size={22} />
                     <span className="font-black text-sm uppercase tracking-widest">{link.label}</span>
                   </button>

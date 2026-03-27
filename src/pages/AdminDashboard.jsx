@@ -306,8 +306,8 @@ export default function AdminDashboard() {
       <aside className={`fixed z-20 inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out bg-slate-900 text-white w-80 space-y-6 py-7 px-10 border-r border-slate-800`}>
         <div className="mb-16 px-2">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
-              <ShieldCheck size={28} className="text-white" />
+            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-600/20 overflow-hidden border border-slate-700">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tighter text-white uppercase leading-none">SMART<span className="text-blue-500">BANK</span></h2>

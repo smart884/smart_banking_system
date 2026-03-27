@@ -49,14 +49,8 @@ export default function Home() {
             {/* Logo Display on Right Side */}
             <div className="relative group animate-in fade-in slide-in-from-right-8 duration-1000 delay-200">
               <div className="absolute inset-0 bg-blue-600/10 blur-3xl rounded-full scale-150 group-hover:scale-175 transition-transform duration-700" />
-              <div className="relative w-64 h-64 md:w-96 md:h-96 bg-white rounded-[60px] shadow-2xl flex items-center justify-center border border-slate-100 p-12 overflow-hidden rotate-3 group-hover:rotate-0 transition-all duration-500">
-                <ShieldCheck size={200} className="text-blue-600 drop-shadow-2xl" />
-                {/* 
-                  To use your specific logo from Image 3:
-                  1. Put your logo image in the 'public' folder (e.g., public/logo.png)
-                  2. Replace <ShieldCheck /> with:
-                     <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
-                */}
+              <div className="relative w-64 h-64 md:w-96 md:h-96 bg-white rounded-[60px] shadow-2xl flex items-center justify-center border border-slate-100 p-8 overflow-hidden rotate-3 group-hover:rotate-0 transition-all duration-500">
+                <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
               </div>
             </div>
           </div>

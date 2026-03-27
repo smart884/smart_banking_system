@@ -372,8 +372,8 @@ export default function ClerkDashboard() {
       <aside className="hidden lg:flex w-80 flex-col bg-slate-900 text-white border-r border-slate-800 sticky top-0 h-screen z-50 p-10">
         <div className="mb-16 px-2">
           <Link to="/" className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/20">
-              <Briefcase size={24} />
+            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-blue-600/20 overflow-hidden border border-slate-700">
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
             </div>
             <span className="text-2xl font-black tracking-tighter text-white uppercase">smart <span className="text-blue-500">Clerk</span></span>
           </Link>

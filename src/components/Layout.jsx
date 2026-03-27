@@ -9,7 +9,7 @@ export default function Layout({ children }) {
       <footer className="bg-slate-900 text-white py-20">
         <div className="container-7xl grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="md:col-span-2 space-y-6">
-            <h3 className="text-2xl font-black tracking-tighter uppercase">smart <span className="text-blue-500">Bank-E-System</span></h3>
+            <h3 className="text-2xl font-black tracking-tighter uppercase">Smart Bank - <span className="text-blue-500">The E-Banking System</span></h3>
             <p className="text-slate-400 max-w-sm leading-relaxed">
               Empowering your financial journey with bank-grade security and cutting-edge digital experiences. The future of banking is here.
             </p>
@@ -32,7 +32,7 @@ export default function Layout({ children }) {
           </div>
         </div>
         <div className="container-7xl mt-20 pt-8 border-t border-white/5 text-center text-slate-500 text-xs font-black uppercase tracking-[0.3em]">
-          &copy; {new Date().getFullYear()} SmartBank Digital Systems. All rights reserved.
+          &copy; {new Date().getFullYear()} Smart Bank - The E-Banking System. All rights reserved.
         </div>
       </footer>
     </div>

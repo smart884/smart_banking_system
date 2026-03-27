@@ -19,28 +19,45 @@ export default function Home() {
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-[400px] h-[400px] bg-indigo-100/50 rounded-full blur-3xl -z-10" />
         
         <Container>
-          <div className="text-center max-w-5xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-700 text-sm font-bold mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <Zap size={16} />
-              <span>India's Leading Digital Bank</span>
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-16">
+            <div className="max-w-3xl text-left animate-in fade-in slide-in-from-left-8 duration-1000">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 text-blue-700 text-sm font-bold mb-8">
+                <Zap size={16} />
+                <span>India's Leading Digital Bank</span>
+              </div>
+              <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-slate-900 tracking-tighter mb-8 leading-none">
+                Smart Bank - <br />
+                <span className="text-blue-600">The E-Banking System</span>
+              </h1>
+              <p className="text-xl md:text-2xl text-slate-600 mb-12 leading-relaxed font-medium">
+                We provide seamless, secure, and smart banking solutions for the modern Indian citizen.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <Link to="/register">
+                  <Button className="h-16 px-10 text-xl bg-gradient-to-r from-blue-700 to-indigo-800 shadow-2xl shadow-blue-200 hover:scale-105 transition-transform rounded-2xl">
+                    Get Started Today
+                  </Button>
+                </Link>
+                <Link to="/about">
+                  <Button variant="secondary" className="h-16 px-10 text-xl border-slate-200 text-slate-700 hover:bg-slate-100 rounded-2xl">
+                    Who We Are
+                  </Button>
+                </Link>
+              </div>
             </div>
-            <h1 className="text-6xl md:text-[8rem] font-black text-slate-900 tracking-tighter mb-8 animate-in fade-in slide-in-from-bottom-6 duration-1000 leading-none">
-              smart <span className="text-blue-600">Bank-The E-Banking System</span>
-            </h1>
-            <p className="text-2xl md:text-3xl text-slate-600 mb-12 leading-relaxed animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 font-medium">
-              We provide seamless, secure, and smart banking solutions for the modern Indian citizen.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 animate-in fade-in slide-in-from-bottom-10 duration-1000 delay-300">
-              <Link to="/register">
-                <Button className="h-20 px-12 text-2xl bg-gradient-to-r from-blue-700 to-indigo-800 shadow-2xl shadow-blue-200 hover:scale-105 transition-transform rounded-2xl">
-                  Get Started Today
-                </Button>
-              </Link>
-              <Link to="/about">
-                <Button variant="secondary" className="h-20 px-12 text-2xl border-slate-200 text-slate-700 hover:bg-slate-100 rounded-2xl">
-                  Who We Are
-                </Button>
-              </Link>
+
+            {/* Logo Display on Right Side */}
+            <div className="relative group animate-in fade-in slide-in-from-right-8 duration-1000 delay-200">
+              <div className="absolute inset-0 bg-blue-600/10 blur-3xl rounded-full scale-150 group-hover:scale-175 transition-transform duration-700" />
+              <div className="relative w-64 h-64 md:w-96 md:h-96 bg-white rounded-[60px] shadow-2xl flex items-center justify-center border border-slate-100 p-12 overflow-hidden rotate-3 group-hover:rotate-0 transition-all duration-500">
+                <ShieldCheck size={200} className="text-blue-600 drop-shadow-2xl" />
+                {/* 
+                  To use your specific logo from Image 3:
+                  1. Put your logo image in the 'public' folder (e.g., public/logo.png)
+                  2. Replace <ShieldCheck /> with:
+                     <img src="/logo.png" alt="Smart Bank Logo" className="w-full h-full object-contain" />
+                */}
+              </div>
             </div>
           </div>
         </Container>

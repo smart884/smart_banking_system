@@ -8,15 +8,15 @@ export default function Footer() {
       
       <div className="container-7xl relative z-10">
         <div className="grid lg:grid-cols-12 gap-16 mb-20">
-          {/* Brand Column */}
+          {/* Brand Column: Name on Left, Logo on Right */}
           <div className="lg:col-span-4 space-y-8">
-            <Link to="/" className="flex items-center gap-2 group">
+            <Link to="/" className="flex items-center gap-4 group">
+              <span className="text-xl md:text-2xl font-black tracking-tighter">
+                Smart Bank - <span className="text-blue-600">The E-Banking System</span>
+              </span>
               <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-900/50">
                 <ShieldCheck size={24} />
               </div>
-              <span className="text-xl md:text-2xl font-black tracking-tighter">
-                smart <span className="text-blue-600">Bank-E-System</span>
-              </span>
             </Link>
             <p className="text-slate-400 text-lg leading-relaxed max-w-sm">
               Empowering the next generation of Indian citizens with intelligent, secure, and seamless digital banking solutions.

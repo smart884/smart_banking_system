@@ -53,14 +53,15 @@ export default function Navbar() {
       scrolled ? 'bg-white/80 backdrop-blur-xl shadow-lg py-3' : 'bg-transparent py-5'
     }`}>
       <div className="container-7xl flex items-center justify-between">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform">
-            <ShieldCheck size={24} />
-          </div>
+        {/* Logo Section: Name on Left, Logo on Right */}
+        <Link to="/" className="flex items-center gap-4 group">
           <span className="text-xl md:text-2xl font-black text-slate-900 tracking-tighter">
-            smart <span className="text-blue-600">Bank-E-System</span>
+            Smart Bank - <span className="text-blue-600">The E-Banking System</span>
           </span>
+          {/* Logo Placeholder - You can replace the ShieldCheck with an <img> tag if you have the file */}
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-xl shadow-blue-200 group-hover:scale-110 transition-transform">
+            <ShieldCheck size={28} />
+          </div>
         </Link>
 
         {/* Desktop Nav */}
@@ -112,8 +113,11 @@ export default function Navbar() {
           open ? 'translate-x-0' : 'translate-x-full'
         }`}>
           <div className="flex items-center justify-between mb-12">
-             <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center">
-              <ShieldCheck size={28} />
+             <div className="flex items-center gap-3">
+               <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg">
+                <ShieldCheck size={28} />
+              </div>
+              <span className="text-xl font-black text-slate-900 tracking-tighter">Smart Bank</span>
             </div>
             <button onClick={() => setOpen(false)} className="p-3 rounded-2xl bg-slate-100 text-slate-400 hover:text-slate-900 transition-all">
               <X size={24} />

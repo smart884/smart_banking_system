@@ -38,7 +38,11 @@ export default function Registration() {
     pinCode: '',
     gender: 'Male',
     dob: '',
-    role: 'customer'
+    role: 'customer',
+    occupation: '',
+    annualIncome: '',
+    nomineeName: '',
+    nomineeRelation: ''
   });
 
   const handleChange = (e) => {
@@ -133,9 +137,16 @@ export default function Registration() {
         email: formData.email, 
         aadhaar: formData.aadhaar, 
         pan: formData.pan, 
+        occupation: formData.occupation,
+        annualIncome: formData.annualIncome,
+        nomineeName: formData.nomineeName,
+        nomineeRelation: formData.nomineeRelation,
         userType: formData.role || "customer", 
         role: formData.role || "customer", 
         status: "Active", 
+        kycStatus: "Pending",
+        mobileVerified: false,
+        emailVerified: false,
         createdAt: serverTimestamp() 
       }); 
 

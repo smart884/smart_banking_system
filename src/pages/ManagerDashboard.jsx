@@ -33,7 +33,7 @@ export default function ManagerDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedReq, setSelectedReq] = useState(null);
-  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [managerRemarks, setManagerRemarks] = useState(''); // Added managerRemarks
   const [activeTab, setActiveTab] = useState('dashboard');
   const location = useLocation();
   const navigate = useNavigate();
@@ -48,13 +48,20 @@ export default function ManagerDashboard() {
     navigate('/login');
   };
 
-  const handleOverride = async (status) => {
+  const handleAction = async (status) => {
     if (!selectedReq) return;
-    await updateRequestStatus(selectedReq.id, status);
-    showToast(`Manager Override: ${status === 'approved' ? 'Approved ✅' : 'Rejected ❌'}`);
-    setIsOverrideModalOpen(false);
+    const finalStatus = status === 'approved' ? 'manager_approved' : 'rejected';
+    await updateRequestStatus(selectedReq.id, finalStatus, managerRemarks);
+    showToast(`Final Review: ${status === 'approved' ? 'Account Authorized ✅' : 'Rejected ❌'}`);
     setSelectedReq(null);
+    setManagerRemarks('');
   };
+
+  // Banking Workflow Filter: Managers see 'clerk_approved' or all requests
+  const filteredRequests = requests.filter(r => 
+    (activeTab === 'dashboard' && r.status === 'clerk_approved') || 
+    (activeTab === 'requests')
+  );
 
   const navLinks = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
@@ -88,9 +95,9 @@ export default function ManagerDashboard() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-slate-50">
-                          {requests.length === 0 ? (
+                          {filteredRequests.length === 0 ? (
                             <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests in active pipeline.</td></tr>
-                          ) : requests.slice(0, 5).map((req) => (
+                          ) : filteredRequests.slice(0, 5).map((req) => (
                             <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
                                <td className="px-8 py-6">
                                   <div className="flex items-center gap-4">
@@ -106,9 +113,10 @@ export default function ManagerDashboard() {
                                   <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
                                     req.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
                                     req.status === 'rejected' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
+                                    req.status === 'clerk_approved' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
                                     'bg-amber-50 text-amber-600 border border-amber-100'
                                   }`}>
-                                    {req.status}
+                                    {req.status === 'clerk_approved' ? 'Clerk Approved' : req.status}
                                   </span>
                                </td>
                                <td className="px-8 py-6 text-right">
@@ -264,7 +272,7 @@ export default function ManagerDashboard() {
   const RequestDetailsModal = () => {
     if (!selectedReq) return null;
     return (
-      <Modal isOpen={!!selectedReq && !isOverrideModalOpen} onClose={() => setSelectedReq(null)} title="Request Specification">
+      <Modal isOpen={!!selectedReq} onClose={() => setSelectedReq(null)} title="Executive Review Specification">
         <div className="space-y-8">
           <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-[24px] border border-slate-100">
             <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">
@@ -276,12 +284,14 @@ export default function ManagerDashboard() {
             </div>
           </div>
 
-          <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl space-y-4">
+          <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl space-y-6">
              <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Request Type</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Protocol Specification</span>
                 <span className="font-black tracking-tight">{selectedReq.type}</span>
              </div>
-             <div className="grid grid-cols-2 gap-4 pt-4">
+             
+             {/* Dynamic Fields */}
+             <div className="grid grid-cols-2 gap-6 pt-4">
                 {Object.entries(selectedReq.details || {}).map(([key, value]) => (
                   <div key={key}>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
@@ -289,45 +299,55 @@ export default function ManagerDashboard() {
                   </div>
                 ))}
              </div>
+
+             {/* Clerk Remarks if available */}
+             {selectedReq.clerkRemark && (
+               <div className="p-4 bg-white/5 rounded-2xl border border-white/10 mt-4">
+                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Clerk Remark</p>
+                 <p className="text-sm font-medium text-slate-300 italic">"{selectedReq.clerkRemark}"</p>
+               </div>
+             )}
           </div>
 
-          <div className="flex flex-col gap-4">
-             <Button full className="h-16 rounded-[24px] bg-blue-600 font-black shadow-xl shadow-blue-100" onClick={() => setIsOverrideModalOpen(true)}>
-                Enterprise Override <ShieldAlert size={20} className="ml-2" />
-             </Button>
-             <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Manager permissions allow immediate approval or rejection of any request.</p>
-          </div>
+          {selectedReq.status === 'clerk_approved' && (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Manager Approval Remarks</label>
+                <textarea 
+                  value={managerRemarks}
+                  onChange={(e) => setManagerRemarks(e.target.value)}
+                  placeholder="Confirm account authorization or specify rejection reason..."
+                  className="w-full h-24 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                <Button 
+                  variant="secondary" 
+                  full 
+                  onClick={() => handleAction('rejected')}
+                  className="h-16 rounded-[24px] border-rose-100 text-rose-500 font-black uppercase tracking-widest text-xs hover:bg-rose-50"
+                >
+                  REJECT REQUEST
+                </Button>
+                <Button 
+                  full 
+                  onClick={() => handleAction('approved')}
+                  className="h-16 rounded-[24px] bg-emerald-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-emerald-100"
+                >
+                  AUTHORIZE ACCOUNT
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest italic pt-4">Manager authorization triggers automatic account generation & core banking deployment.</p>
         </div>
       </Modal>
     );
   };
 
-  const OverrideModal = () => (
-    <Modal isOpen={isOverrideModalOpen} onClose={() => setIsOverrideModalOpen(false)} title="Confirm Manager Override">
-       <div className="space-y-8 p-4">
-          <div className="p-8 bg-amber-50 rounded-[32px] border border-amber-100 flex items-start gap-6">
-             <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-amber-200">
-                <ShieldAlert size={28} />
-             </div>
-             <div>
-                <h4 className="text-xl font-black text-amber-900 tracking-tight mb-2">High-Privilege Action</h4>
-                <p className="text-sm font-medium text-amber-700 leading-relaxed">
-                   You are performing a manager-level override on request <span className="font-black">#{selectedReq?.id}</span>. This action is logged for compliance auditing.
-                </p>
-             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-             <Button full className="h-16 rounded-[24px] bg-rose-600 font-black shadow-xl shadow-rose-100" onClick={() => handleOverride('rejected')}>
-                REJECT REQUEST
-             </Button>
-             <Button full className="h-16 rounded-[24px] bg-emerald-600 font-black shadow-xl shadow-emerald-100" onClick={() => handleOverride('approved')}>
-                APPROVE REQUEST
-             </Button>
-          </div>
-       </div>
-    </Modal>
-  );
+  const OverrideModal = () => null; // Removed as it's merged into details modal
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans selection:bg-blue-100 selection:text-blue-900">

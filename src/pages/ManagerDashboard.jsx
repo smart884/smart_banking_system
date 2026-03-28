@@ -269,84 +269,6 @@ export default function ManagerDashboard() {
     );
   };
 
-  const RequestDetailsModal = () => {
-    if (!selectedReq) return null;
-    return (
-      <Modal isOpen={!!selectedReq} onClose={() => setSelectedReq(null)} title="Executive Review Specification">
-        <div className="space-y-8">
-          <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-[24px] border border-slate-100">
-            <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">
-              {selectedReq.userName[0]}
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Requester Name</p>
-              <p className="text-lg font-black text-slate-900">{selectedReq.userName}</p>
-            </div>
-          </div>
-
-          <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl space-y-6">
-             <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Protocol Specification</span>
-                <span className="font-black tracking-tight">{selectedReq.type}</span>
-             </div>
-             
-             {/* Dynamic Fields */}
-             <div className="grid grid-cols-2 gap-6 pt-4">
-                {Object.entries(selectedReq.details || {}).map(([key, value]) => (
-                  <div key={key}>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                    <p className="font-bold text-sm text-white truncate">{String(value)}</p>
-                  </div>
-                ))}
-             </div>
-
-             {/* Clerk Remarks if available */}
-             {selectedReq.clerkRemark && (
-               <div className="p-4 bg-white/5 rounded-2xl border border-white/10 mt-4">
-                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Clerk Remark</p>
-                 <p className="text-sm font-medium text-slate-300 italic">"{selectedReq.clerkRemark}"</p>
-               </div>
-             )}
-          </div>
-
-          {selectedReq.status === 'clerk_approved' && (
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Manager Approval Remarks</label>
-                <textarea 
-                  value={managerRemarks}
-                  onChange={(e) => setManagerRemarks(e.target.value)}
-                  placeholder="Confirm account authorization or specify rejection reason..."
-                  className="w-full h-24 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                <Button 
-                  variant="secondary" 
-                  full 
-                  onClick={() => handleAction('rejected')}
-                  className="h-16 rounded-[24px] border-rose-100 text-rose-500 font-black uppercase tracking-widest text-xs hover:bg-rose-50"
-                >
-                  REJECT REQUEST
-                </Button>
-                <Button 
-                  full 
-                  onClick={() => handleAction('approved')}
-                  className="h-16 rounded-[24px] bg-emerald-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-emerald-100"
-                >
-                  AUTHORIZE ACCOUNT
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest italic pt-4">Manager authorization triggers automatic account generation & core banking deployment.</p>
-        </div>
-      </Modal>
-    );
-  };
-
   const OverrideModal = () => null; // Removed as it's merged into details modal
 
   return (
@@ -362,7 +284,80 @@ export default function ManagerDashboard() {
       )}
 
       {/* Modal Systems */}
-      <RequestDetailsModal />
+      <Modal isOpen={!!selectedReq} onClose={() => setSelectedReq(null)} title="Executive Review Specification">
+        {selectedReq && (
+          <div className="space-y-8">
+            <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-[24px] border border-slate-100">
+              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">
+                {selectedReq.userName[0]}
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Requester Name</p>
+                <p className="text-lg font-black text-slate-900">{selectedReq.userName}</p>
+              </div>
+            </div>
+
+            <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl space-y-6">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Protocol Specification</span>
+                  <span className="font-black tracking-tight">{selectedReq.type}</span>
+              </div>
+              
+              {/* Dynamic Fields */}
+              <div className="grid grid-cols-2 gap-6 pt-4">
+                  {Object.entries(selectedReq.details || {}).map(([key, value]) => (
+                    <div key={key}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                      <p className="font-bold text-sm text-white truncate">{String(value)}</p>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Clerk Remarks if available */}
+              {selectedReq.clerkRemark && (
+                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 mt-4">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Clerk Remark</p>
+                  <p className="text-sm font-medium text-slate-300 italic">"{selectedReq.clerkRemark}"</p>
+                </div>
+              )}
+            </div>
+
+            {selectedReq.status === 'clerk_approved' && (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Manager Approval Remarks</label>
+                  <textarea 
+                    value={managerRemarks}
+                    onChange={(e) => setManagerRemarks(e.target.value)}
+                    placeholder="Confirm account authorization or specify rejection reason..."
+                    className="w-full h-24 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                  <Button 
+                    variant="secondary" 
+                    full 
+                    onClick={() => handleAction('rejected')}
+                    className="h-16 rounded-[24px] border-rose-100 text-rose-500 font-black uppercase tracking-widest text-xs hover:bg-rose-50"
+                  >
+                    REJECT REQUEST
+                  </Button>
+                  <Button 
+                    full 
+                    onClick={() => handleAction('approved')}
+                    className="h-16 rounded-[24px] bg-emerald-600 font-black uppercase tracking-widest text-xs shadow-xl shadow-emerald-100"
+                  >
+                    AUTHORIZE ACCOUNT
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest italic pt-4">Manager authorization triggers automatic account generation & core banking deployment.</p>
+          </div>
+        )}
+      </Modal>
       <OverrideModal />
 
       {/* Desktop Sidebar */}

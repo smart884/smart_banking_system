@@ -33,7 +33,8 @@ import {
   CreditCard as CreditCardIcon,
   FileCheck,
   UserPlus,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 
 import Modal from '../components/ui/Modal';
@@ -43,6 +44,8 @@ export default function SecureDashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
+  const [transferSuccess, setTransferSuccess] = useState(false); // Success animation state
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
   const userRequests = requests.filter(req => 
@@ -92,7 +95,8 @@ export default function SecureDashboard() {
         icon = '🏦';
         isNegative = false;
       } else if (req.category === 'transfer') {
-        name = `Transfer to ${req.details?.recipient || 'Unknown'}`;
+        name = `Transfer to ${req.details?.recipientName || req.details?.recipient || 'Unknown'}`;
+        if (req.details?.note) name += ` (${req.details.note})`;
         amountVal = parseFloat(req.details?.amount || 0);
         icon = '💸';
       } else if (req.category === 'payment') {
@@ -110,7 +114,10 @@ export default function SecureDashboard() {
         amountVal,
         status: req.status === 'pending_clerk' ? 'Clerk Review' : req.status === 'clerk_approved' ? 'Manager Review' : req.status.charAt(0).toUpperCase() + req.status.slice(1),
         icon,
-        isNegative
+        isNegative,
+        fromAccountNum: req.details?.fromAccount || (req.category === 'account' ? getSimulatedAccNum(req.id) : null),
+        toAccountNum: req.details?.recipient || null,
+        category: req.category
       };
     })
     .sort((a, b) => {
@@ -121,11 +128,11 @@ export default function SecureDashboard() {
 
   // Calculate real Inflow and Outflow
   const totalInflow = transactionHistory
-    .filter(tx => !tx.isNegative && (tx.status === 'Approved' || tx.status === 'Manager Review' || tx.status === 'Clerk Review' || tx.status === 'Pending'))
+    .filter(tx => !tx.isNegative && ['Approved', 'Manager Review', 'Clerk Review', 'Pending', 'approved'].includes(tx.status))
     .reduce((sum, tx) => sum + tx.amountVal, 0);
   
   const totalOutflow = transactionHistory
-    .filter(tx => tx.isNegative && (tx.status === 'Approved' || tx.status === 'Manager Review' || tx.status === 'Clerk Review' || tx.status === 'Pending'))
+    .filter(tx => tx.isNegative && ['Approved', 'Manager Review', 'Clerk Review', 'Pending', 'approved'].includes(tx.status))
     .reduce((sum, tx) => sum + tx.amountVal, 0);
 
   // Calculate real total balance: Sum of all inflows minus sum of all outflows
@@ -133,25 +140,59 @@ export default function SecureDashboard() {
 
   // Combine official accounts and approved requests for display in Accounts tab
   const allAccounts = [
-    ...userAccounts.map(acc => ({
-      id: acc.id,
-      accountNumber: acc.accountNumber,
-      accountType: acc.accountType,
-      balance: acc.balance,
-      createdAt: acc.createdAt,
-      status: 'Active',
-      isOfficial: true
-    })),
-    ...approvedRequests.map(req => ({
-      id: req.id,
-      accountNumber: getSimulatedAccNum(req.id),
-      accountType: req.details?.accountType || 'Saving',
-      balance: req.details?.deposit || 0,
-      createdAt: req.createdAt,
-      status: req.status === 'clerk_approved' || req.status === 'manager_approved' ? 'Approved' : 'Approved',
-      isOfficial: false,
-      details: req.details
-    }))
+    ...userAccounts.map(acc => {
+      const accNum = acc.accountNumber;
+      
+      // Calculate real-time balance for this official account
+      const totalSent = userRequests
+        .filter(req => (req.category === 'transfer' || req.category === 'payment') && 
+          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(req.status) && 
+          req.details?.fromAccount === accNum)
+        .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
+        
+      const totalReceived = userRequests
+        .filter(req => req.category === 'transfer' && 
+          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(req.status) && 
+          req.details?.transferType === 'credit' && req.details?.recipient === accNum)
+        .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
+
+      return {
+        id: acc.id,
+        accountNumber: accNum,
+        accountType: acc.accountType,
+        balance: parseFloat(acc.balance || 0) - totalSent + totalReceived,
+        createdAt: acc.createdAt,
+        status: 'Active',
+        isOfficial: true
+      };
+    }),
+    ...approvedRequests.map(req => {
+      const accNum = getSimulatedAccNum(req.id);
+      
+      // Calculate real-time balance for this simulated account
+      const totalSent = userRequests
+        .filter(r => (r.category === 'transfer' || r.category === 'payment') && 
+          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(r.status) && 
+          r.details?.fromAccount === accNum)
+        .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
+        
+      const totalReceived = userRequests
+        .filter(r => r.category === 'transfer' && 
+          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(r.status) && 
+          r.details?.transferType === 'credit' && r.details?.recipient === accNum)
+        .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
+
+      return {
+        id: req.id,
+        accountNumber: accNum,
+        accountType: req.details?.accountType || 'Saving',
+        balance: parseFloat(req.details?.deposit || 0) - totalSent + totalReceived,
+        createdAt: req.createdAt,
+        status: 'Approved',
+        isOfficial: false,
+        details: req.details
+      };
+    })
   ];
 
   const [modal, setModal] = useState({
@@ -250,6 +291,32 @@ export default function SecureDashboard() {
       }
     }
 
+    // Transfer Logic & Validation
+    if (modal.type === 'transfer') {
+      if (!formData.fromAccount || !formData.recipient || !formData.amount) {
+        setFormError('Source account, recipient, and amount are required.');
+        return;
+      }
+      
+      const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+      const transferAmt = parseFloat(formData.amount);
+      
+      if (!sourceAcc) {
+        setFormError('Source account not found.');
+        return;
+      }
+      
+      if (transferAmt <= 0) {
+        setFormError('Amount must be greater than zero.');
+        return;
+      }
+
+      if (transferAmt > sourceAcc.balance) {
+        setFormError(`Insufficient funds! Your ${sourceAcc.accountType} account only has ₹${sourceAcc.balance}.`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     console.log(`[USER-DASHBOARD] Submitting ${modal.type}...`, formData);
     
@@ -260,6 +327,30 @@ export default function SecureDashboard() {
     if (modal.type === 'new-account') category = 'account';
     if (modal.type === 'transfer') category = 'transfer';
     if (modal.type === 'bill-pay') category = 'payment';
+
+    // Fund Transfer Success Animation & Auto-Approval
+    if (modal.type === 'transfer' || modal.type === 'bill-pay') {
+      setTimeout(() => {
+        addRequest({
+          userId: userProfile?.uid,
+          userName,
+          type: modal.title,
+          category,
+          details: formData,
+          status: 'approved' // Self & verified transfers/payments are auto-approved for balance deduction
+        }).then(() => {
+          if (modal.type === 'transfer') setTransferSuccess(true);
+          setTimeout(() => {
+            showToast(`${modal.type === 'transfer' ? `₹${formData.amount} transferred` : 'Bill paid'} successfully! ✅`);
+            closeModal();
+            setTransferSuccess(false);
+          }, 2000);
+        }).finally(() => {
+          setSubmitting(false);
+        });
+      }, 1500); // Simulated processing time
+      return;
+    }
 
     addRequest({
       userId: userProfile?.uid, // Added userId for better tracking
@@ -534,7 +625,10 @@ export default function SecureDashboard() {
 
                       <div className="mt-10 pt-8 border-t border-slate-50 flex items-center justify-between">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Opened: {formatAccountDate(acc.createdAt)}</p>
-                        <button className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest hover:gap-4 transition-all">
+                        <button 
+                          onClick={() => setSelectedAccount(acc)}
+                          className="flex items-center gap-2 text-blue-600 font-black text-xs uppercase tracking-widest hover:gap-4 transition-all"
+                        >
                           Details <ArrowRight size={16} />
                         </button>
                       </div>
@@ -1030,35 +1124,160 @@ export default function SecureDashboard() {
             <>
               {/* USE CASE: Fund transfer */}
               {modal.type === 'transfer' && (
-                <>
-                  <div className="space-y-2">
-                    <label className="label">Transfer Type</label>
-                    <select name="transferType" onChange={handleInputChange} className="input" required>
-                      <option value="debit">Debit Transfer</option>
-                      <option value="credit">Credit Transfer</option>
-                    </select>
+                <div className="space-y-6">
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="label">Transfer Type</label>
+                        <select 
+                          name="transferType" 
+                          onChange={handleInputChange} 
+                          value={formData.transferType || 'debit'}
+                          className="input" 
+                          required
+                        >
+                          <option value="debit">Debit Transfer (To Others)</option>
+                          <option value="credit">Credit Transfer (Self - To Own Account)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="label">From Account</label>
+                        <select 
+                          name="fromAccount" 
+                          onChange={handleInputChange} 
+                          value={formData.fromAccount || ''}
+                          className="input" 
+                          required
+                        >
+                          <option value="">Select source account</option>
+                          {allAccounts.map(acc => (
+                            <option key={acc.id} value={acc.accountNumber}>
+                              {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {formData.transferType === 'credit' ? (
+                        <div className="space-y-2">
+                          <label className="label">To Own Account</label>
+                          <select 
+                            name="recipient" 
+                            onChange={handleInputChange} 
+                            value={formData.recipient || ''}
+                            className="input" 
+                            required
+                          >
+                            <option value="">Select destination account</option>
+                            {allAccounts
+                              .filter(acc => acc.accountNumber !== formData.fromAccount)
+                              .map(acc => (
+                                <option key={acc.id} value={acc.accountNumber}>
+                                  {acc.accountType.toUpperCase()} - {acc.accountNumber}
+                                </option>
+                              ))
+                            }
+                          </select>
+                        </div>
+                      ) : (
+                        <>
+                          <Input 
+                            label="Recipient Name" 
+                            name="recipientName" 
+                            placeholder="e.g. Dhruvi" 
+                            onChange={handleInputChange} 
+                            value={formData.recipientName || ''}
+                            required 
+                          />
+                          <Input 
+                            label="Recipient Account Number" 
+                            name="recipient" 
+                            placeholder="Enter destination account number" 
+                            onChange={handleInputChange} 
+                            value={formData.recipient || ''}
+                            required 
+                          />
+                        </>
+                      )}
+                      
+                      <Input 
+                        label="Amount (₹)" 
+                        name="amount" 
+                        type="number" 
+                        placeholder="0.00" 
+                        onChange={handleInputChange} 
+                        value={formData.amount || ''}
+                        required 
+                      />
+
+                      {formData.transferType === 'debit' && (
+                        <Input 
+                          label="Note / Purpose" 
+                          name="note" 
+                          placeholder="e.g. Bill payment, Rent, etc." 
+                          onChange={handleInputChange} 
+                          value={formData.note || ''}
+                        />
+                      )}
+                    </div>
                   </div>
-                  <Input label="Recipient Account" name="recipient" placeholder="Enter account number" onChange={handleInputChange} required />
-                  <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
-                </>
+
+                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center text-white">
+                      <ShieldCheck size={20} />
+                    </div>
+                    <p className="text-[10px] font-black text-amber-900 uppercase tracking-widest">
+                      {formData.transferType === 'credit' 
+                        ? 'Internal transfer between your verified accounts.' 
+                        : 'External transfer requires standard bank verification.'}
+                    </p>
+                  </div>
+                </div>
               )}
               
               {/* USE CASE: Pay bills / Recharge */}
               {modal.type === 'bill-pay' && (
-                <>
-                  <div className="space-y-2">
-                    <label className="label">Category</label>
-                    <select name="billCategory" onChange={handleInputChange} className="input" required>
-                      <option value="">Select category</option>
-                      <option value="electricity">Electricity Bill</option>
-                      <option value="credit-card">Credit Card Bill Payment</option>
-                      <option value="loan-emi">Loan EMI Payment</option>
-                      <option value="mobile-recharge">Mobile Recharge</option>
-                    </select>
+                <div className="space-y-6">
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="label">From Account</label>
+                        <select 
+                          name="fromAccount" 
+                          onChange={handleInputChange} 
+                          value={formData.fromAccount || ''}
+                          className="input" 
+                          required
+                        >
+                          <option value="">Select source account</option>
+                          {allAccounts.map(acc => (
+                            <option key={acc.id} value={acc.accountNumber}>
+                              {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="label">Category</label>
+                        <select name="billCategory" onChange={handleInputChange} className="input" required>
+                          <option value="">Select category</option>
+                          <option value="electricity">Electricity Bill</option>
+                          <option value="credit-card">Credit Card Bill Payment</option>
+                          <option value="loan-emi">Loan EMI Payment</option>
+                          <option value="mobile-recharge">Mobile Recharge</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Input label="Reference Number" name="refNum" placeholder="Consumer ID / Card Num / Mobile" onChange={handleInputChange} required />
+                      <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
+                    </div>
                   </div>
-                  <Input label="Reference Number" name="refNum" placeholder="Consumer ID / Card Num / Mobile" onChange={handleInputChange} required />
-                  <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
-                </>
+                </div>
               )}
 
               {/* USE CASE: Request services */}
@@ -1082,13 +1301,23 @@ export default function SecureDashboard() {
                 <button 
                   type="submit" 
                   disabled={submitting} 
-                  className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white text-lg font-black rounded-[24px] shadow-xl shadow-blue-100 flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50"
+                  className={`w-full h-16 rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest ${
+                    transferSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                  }`}
                 >
                   {submitting ? (
-                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      Processing...
+                    </div>
+                  ) : transferSuccess ? (
+                    <div className="flex items-center gap-3 animate-in zoom-in duration-300">
+                      <CheckCircle2 className="w-7 h-7" />
+                      Transfer Complete
+                    </div>
                   ) : (
                     <>
-                      Submit {modal.title} Request <ArrowRight size={22} />
+                      {modal.type === 'transfer' ? 'Transfer Now' : `Submit ${modal.title} Request`} <ArrowRight size={22} />
                     </>
                   )}
                 </button>
@@ -1097,6 +1326,148 @@ export default function SecureDashboard() {
             </>
           )}
         </form>
+      </Modal>
+
+      {/* Account Details Modal */}
+      <Modal
+        isOpen={!!selectedAccount}
+        onClose={() => setSelectedAccount(null)}
+        title="Account Detailed Specification"
+        size="lg"
+      >
+        {selectedAccount && (
+          <div className="space-y-8">
+            {/* Header: Name & Type */}
+            <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black text-2xl shadow-xl shadow-blue-200">
+                  {selectedAccount.userName?.[0] || userProfile?.firstName?.[0]}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Account Holder</p>
+                  <h3 className="text-xl font-black text-slate-900">{selectedAccount.userName || `${userProfile?.firstName} ${userProfile?.lastName}`}</h3>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Account Type</p>
+                <span className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                  {selectedAccount.accountType || 'Saving'}
+                </span>
+              </div>
+            </div>
+
+            {/* Core Stats: Number & Balance */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-10 bg-blue-600/20 rounded-full blur-2xl -mr-5 -mt-5 group-hover:scale-150 transition-transform duration-700" />
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-4">Account Number</p>
+                  <p className="text-2xl font-mono tracking-[0.2em] font-bold">
+                    {selectedAccount.accountNumber || `SB-${selectedAccount.id.substring(0, 4).toUpperCase()}-XXXX-XXXX`}
+                  </p>
+                </div>
+              </div>
+              <div className="p-8 bg-white border border-slate-100 rounded-[32px] shadow-xl flex flex-col justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Available Balance</p>
+                  <h4 className="text-4xl font-black text-slate-900 tracking-tight">₹{parseFloat(selectedAccount.balance || 0).toLocaleString()}</h4>
+                </div>
+                <div className="mt-4 flex items-center gap-2 text-emerald-500 font-bold text-xs">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Real-time Verified
+                </div>
+              </div>
+            </div>
+
+            {/* Nominee Details */}
+            <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
+                <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Nominee Information</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nominee Name</p>
+                  <p className="font-bold text-slate-700">{selectedAccount.details?.nomineeName || 'Not Specified'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Relationship</p>
+                  <p className="font-bold text-slate-700">{selectedAccount.details?.nomineeRelation || 'Not Specified'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions: View Debit Card */}
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  setSelectedAccount(null);
+                  setActiveTab('cards');
+                }}
+                className="flex-1 h-16 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all shadow-xl flex items-center justify-center gap-3"
+              >
+                <CardIcon size={20} /> View Debit Card
+              </button>
+            </div>
+
+            {/* Account Specific Transaction History */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Recent Transactions</h4>
+                <button 
+                  onClick={() => {
+                    setSelectedAccount(null);
+                    setActiveTab('history');
+                  }}
+                  className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                >
+                  View Full History
+                </button>
+              </div>
+              <div className="bg-white border border-slate-100 rounded-[32px] overflow-hidden">
+                <table className="w-full">
+                  <tbody className="divide-y divide-slate-50">
+                    {transactionHistory
+                      .filter(tx => 
+                        (tx.fromAccountNum === selectedAccount.accountNumber) || 
+                        (tx.toAccountNum === selectedAccount.accountNumber)
+                      )
+                      .slice(0, 3)
+                      .map((tx, idx) => (
+                        <tr key={tx.id || idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div className="flex items-center gap-4">
+                              <span className="text-xl">{tx.icon}</span>
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{tx.name}</p>
+                                <p className="text-[10px] text-slate-400 uppercase font-medium">{tx.date}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <p className={`font-black ${
+                              tx.toAccountNum === selectedAccount.accountNumber ? 'text-green-600' : 'text-slate-900'
+                            }`}>
+                              {tx.toAccountNum === selectedAccount.accountNumber ? `+₹${tx.amountVal.toLocaleString()}` : tx.amount}
+                            </p>
+                            <p className="text-[8px] font-black text-slate-400 uppercase">{tx.status}</p>
+                          </td>
+                        </tr>
+                      ))}
+                    {transactionHistory.filter(tx => 
+                      (tx.fromAccountNum === selectedAccount.accountNumber) || 
+                      (tx.toAccountNum === selectedAccount.accountNumber)
+                    ).length === 0 && (
+                      <tr>
+                        <td className="py-10 text-center text-slate-400 text-sm font-bold uppercase tracking-widest italic">No transactions found</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

@@ -30,14 +30,131 @@ import {
   Search,
   Sparkles,
   Zap,
-  CreditCard as CreditCardIcon,
   FileCheck,
   UserPlus,
   Clock,
+  Database,
+  ChevronRight,
+  Check,
   Loader2
 } from 'lucide-react';
 
 import Modal from '../components/ui/Modal';
+
+// Constants for Credit Card Bill Flow
+const CC_BANKS = ["SmartBank", "HDFC Bank", "ICICI Bank", "SBI Card", "Axis Bank", "Amex"];
+
+const MOCK_CC_DETAILS = {
+  totalAmount: 12450.75,
+  minDue: 622.54,
+  dueDate: "15-Apr-2026",
+  outstanding: 45200.00
+};
+
+// Constants for Loan EMI Flow
+const MOCK_LOAN_DETAILS = {
+  loanId: "AD14235346457567",
+  emiAmount: 25000,
+  dueDate: "25-Mar-2026", // Past date to simulate penalty
+  penaltyRate: 0.02, // 2% penalty
+  lateFee: 500,
+  loanHolder: "John Doe",
+  totalLoanAmount: 5000000,
+  interestAmount: 1250000,
+  totalPayable: 6250000,
+  remainingBalance: 4250000
+};
+
+// Constants for Electricity Bill Flow
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", 
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", 
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", 
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", 
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
+];
+
+const ELECTRICITY_BOARDS = {
+  "Gujarat": ["Torrent Power", "GIFT Power Company Limited", "PGVCL", "MGVCL", "DGVCL", "UGVCL"],
+  "Maharashtra": ["MSEDCL (Mahadiscom)", "Tata Power - Mumbai", "Adani Electricity", "BEST"],
+  "Delhi": ["BSES Rajdhani", "BSES Yamuna", "Tata Power DDL"],
+  "Karnataka": ["BESCOM", "MESCOM", "HESCOM", "GESCOM"],
+  "Tamil Nadu": ["TANGEDCO"],
+  "Uttar Pradesh": ["UPPCL (Urban)", "UPPCL (Rural)", "NPCL"],
+  // Add more as needed, defaulting others to a generic list for simulation
+};
+
+const BOARD_CITIES = {
+  "Torrent Power": ["Ahmedabad", "Surat", "Bhiwandi", "Agra"],
+  "GIFT Power Company Limited": ["GIFT City, Gandhinagar"],
+  "PGVCL": ["Rajkot", "Jamnagar", "Bhavnagar", "Junagadh"],
+  "MGVCL": ["Vadodara", "Anand", "Nadiad"],
+  "DGVCL": ["Surat", "Bharuch", "Valsad"],
+  "UGVCL": ["Mehsana", "Palanpur", "Gandhinagar"],
+  "MSEDCL (Mahadiscom)": ["Pune", "Nagpur", "Thane", "Nashik"],
+  "Tata Power - Mumbai": ["Mumbai"],
+  "Adani Electricity": ["Mumbai Suburban"],
+  "BEST": ["Mumbai City"],
+  "BSES Rajdhani": ["South Delhi", "West Delhi"],
+  "BSES Yamuna": ["East Delhi", "Central Delhi"],
+  "Tata Power DDL": ["North Delhi", "North West Delhi"],
+  "BESCOM": ["Bangalore", "Tumkur", "Kolar"],
+  "TANGEDCO": ["Chennai", "Coimbatore", "Madurai"],
+  "UPPCL (Urban)": ["Lucknow", "Kanpur", "Varanasi"],
+  "Generic Power Distribution": ["Main City", "Other City"]
+};
+
+// Constants for Mobile Recharge Flow
+const MOBILE_PROVIDERS = [
+  { name: "Airtel", color: "#E40000", lightColor: "#FFEBEE" },
+  { name: "BSNL", color: "#0054A6", lightColor: "#E3F2FD" },
+  { name: "JIO", color: "#005EB8", lightColor: "#E1F5FE" },
+  { name: "MTNL", color: "#F47920", lightColor: "#FFF3E0" },
+  { name: "VI", color: "#EE1D23", lightColor: "#FBE9E7" }
+];
+
+const RECHARGE_PLANS = {
+  "Airtel": [
+    { id: 'a1', price: 239, data: '1.5GB/Day', validity: '28 Days', type: 'Unlimited Calling' },
+    { id: 'a2', price: 299, data: '2GB/Day', validity: '28 Days', type: 'Unlimited Calling' },
+    { id: 'a3', price: 666, data: '1.5GB/Day', validity: '84 Days', type: 'Unlimited Calling' },
+    { id: 'a4', price: 2999, data: '2GB/Day', validity: '365 Days', type: 'Unlimited Calling' },
+    { id: 'a5', price: 155, data: '1GB Total', validity: '24 Days', type: 'Talktime + Data' }
+  ],
+  "BSNL": [
+    { id: 'b1', price: 107, data: '3GB Total', validity: '35 Days', type: 'Talktime' },
+    { id: 'b2', price: 197, data: '2GB/Day', validity: '70 Days', type: 'Talktime' },
+    { id: 'b3', price: 397, data: '2GB/Day', validity: '150 Days', type: 'Talktime' },
+    { id: 'b4', price: 797, data: '2GB/Day', validity: '300 Days', type: 'Talktime' }
+  ],
+  "JIO": [
+    { id: 'j1', price: 239, data: '1.5GB/Day', validity: '28 Days', type: 'True 5G Unlimited' },
+    { id: 'j2', price: 299, data: '2GB/Day', validity: '28 Days', type: 'True 5G Unlimited' },
+    { id: 'j3', price: 666, data: '1.5GB/Day', validity: '84 Days', type: 'True 5G Unlimited' },
+    { id: 'j4', price: 749, data: '2GB/Day', validity: '90 Days', type: 'True 5G Unlimited' },
+    { id: 'j5', price: 2999, data: '2.5GB/Day', validity: '365 Days', type: 'Annual Plan' }
+  ],
+  "MTNL": [
+    { id: 'm1', price: 151, data: '1GB/Day', validity: '28 Days', type: 'Data Plan' },
+    { id: 'm2', price: 251, data: '2GB/Day', validity: '28 Days', type: 'Data Plan' },
+    { id: 'm3', price: 98, data: '2GB Total', validity: '22 Days', type: 'Talktime' }
+  ],
+  "VI": [
+    { id: 'v1', price: 299, data: '1.5GB/Day', validity: '28 Days', type: 'Binge All Night' },
+    { id: 'v2', price: 479, data: '1.5GB/Day', validity: '56 Days', type: 'Binge All Night' },
+    { id: 'v3', price: 719, data: '1.5GB/Day', validity: '84 Days', type: 'Binge All Night' },
+    { id: 'v4', price: 1799, data: '24GB Total', validity: '365 Days', type: 'Annual' }
+  ]
+};
+
+const MOCK_CONTACTS = [
+  { name: 'Self', number: '9876543210' },
+  { name: 'Mom', number: '9823456789' },
+  { name: 'Dad', number: '9821234567' },
+  { name: 'Sister', number: '9123456780' },
+  { name: 'Kashish', number: '9123456781' },
+  { name: 'Dhruvi', number: '9123456782' }
+];
 
 export default function SecureDashboard() {
   const { userProfile, logout, addRequest, requests, userAccounts } = useAuth(); // Added userAccounts
@@ -46,6 +163,17 @@ export default function SecureDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
   const [transferSuccess, setTransferSuccess] = useState(false); // Success animation state
+  const [billStep, setBillStep] = useState(1); // Specific sub-steps for Electricity Bill
+  const [checkingBill, setCheckingBill] = useState(false); // Bill verification loading state
+  const [billFound, setBillFound] = useState(null); // null: not checked, true: found, false: no due
+  const [billAmount, setBillAmount] = useState(0); // Mock bill amount found
+  const [rechargeStep, setRechargeStep] = useState(1); // Steps for Mobile Recharge
+  const [rechargeSearch, setRechargeSearch] = useState(''); // Contact/Plan search query
+  const [selectedPlan, setSelectedPlan] = useState(null); // Selected recharge plan details
+  const [ccStep, setCcStep] = useState(1); // 1: Details, 2: Success/Failure
+  const [ccPaymentStatus, setCcPaymentStatus] = useState(null); // 'success' or 'failure'
+  const [loanStep, setLoanStep] = useState(1); // 1: Entry, 2: Success
+  const [loanStatus, setLoanStatus] = useState(null); // 'success' or 'failure'
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
   const userRequests = requests.filter(req => 
@@ -80,64 +208,6 @@ export default function SecureDashboard() {
     req.category === 'account' && (req.status === 'approved' || req.status === 'clerk_approved' || req.status === 'manager_approved')
   );
   
-  // Prepare real transaction history from user requests
-  const transactionHistory = userRequests
-    .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
-    .map(req => {
-      let name = req.type;
-      let amountVal = 0;
-      let icon = '💳';
-      let isNegative = true;
-
-      if (req.category === 'account') {
-        name = `Initial Deposit (${req.details?.accountType || 'Saving'})`;
-        amountVal = parseFloat(req.details?.deposit || 0);
-        icon = '🏦';
-        isNegative = false;
-      } else if (req.category === 'transfer') {
-        name = `Transfer to ${req.details?.recipientName || req.details?.recipient || 'Unknown'}`;
-        if (req.details?.note) name += ` (${req.details.note})`;
-        amountVal = parseFloat(req.details?.amount || 0);
-        icon = '💸';
-      } else if (req.category === 'payment') {
-        name = req.details?.billCategory ? `${req.details.billCategory.charAt(0).toUpperCase() + req.details.billCategory.slice(1)} Bill` : 'Bill Payment';
-        amountVal = parseFloat(req.details?.amount || 0);
-        icon = '🧾';
-      }
-
-      return {
-        id: req.id,
-        name,
-        date: formatAccountDate(req.createdAt),
-        rawDate: req.createdAt, // Store raw date for sorting
-        amount: `${isNegative ? '-' : '+'}₹${amountVal.toLocaleString()}`,
-        amountVal,
-        status: req.status === 'pending_clerk' ? 'Clerk Review' : req.status === 'clerk_approved' ? 'Manager Review' : req.status.charAt(0).toUpperCase() + req.status.slice(1),
-        icon,
-        isNegative,
-        fromAccountNum: req.details?.fromAccount || (req.category === 'account' ? getSimulatedAccNum(req.id) : null),
-        toAccountNum: req.details?.recipient || null,
-        category: req.category
-      };
-    })
-    .sort((a, b) => {
-       const dateA = getDateObject(a.rawDate);
-       const dateB = getDateObject(b.rawDate);
-       return dateB.getTime() - dateA.getTime();
-     });
-
-  // Calculate real Inflow and Outflow
-  const totalInflow = transactionHistory
-    .filter(tx => !tx.isNegative && ['Approved', 'Manager Review', 'Clerk Review', 'Pending', 'approved'].includes(tx.status))
-    .reduce((sum, tx) => sum + tx.amountVal, 0);
-  
-  const totalOutflow = transactionHistory
-    .filter(tx => tx.isNegative && ['Approved', 'Manager Review', 'Clerk Review', 'Pending', 'approved'].includes(tx.status))
-    .reduce((sum, tx) => sum + tx.amountVal, 0);
-
-  // Calculate real total balance: Sum of all inflows minus sum of all outflows
-  const totalBalance = totalInflow - totalOutflow;
-
   // Combine official accounts and approved requests for display in Accounts tab
   const allAccounts = [
     ...userAccounts.map(acc => {
@@ -146,14 +216,14 @@ export default function SecureDashboard() {
       // Calculate real-time balance for this official account
       const totalSent = userRequests
         .filter(req => (req.category === 'transfer' || req.category === 'payment') && 
-          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(req.status) && 
+          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(req.status.toLowerCase()) && 
           req.details?.fromAccount === accNum)
         .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
         
       const totalReceived = userRequests
         .filter(req => req.category === 'transfer' && 
-          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(req.status) && 
-          req.details?.transferType === 'credit' && req.details?.recipient === accNum)
+          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(req.status.toLowerCase()) && 
+          req.details?.recipient === accNum)
         .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
 
       return {
@@ -163,7 +233,8 @@ export default function SecureDashboard() {
         balance: parseFloat(acc.balance || 0) - totalSent + totalReceived,
         createdAt: acc.createdAt,
         status: 'Active',
-        isOfficial: true
+        isOfficial: true,
+        userName: acc.userName || `${userProfile?.firstName} ${userProfile?.lastName}`
       };
     }),
     ...approvedRequests.map(req => {
@@ -172,14 +243,14 @@ export default function SecureDashboard() {
       // Calculate real-time balance for this simulated account
       const totalSent = userRequests
         .filter(r => (r.category === 'transfer' || r.category === 'payment') && 
-          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(r.status) && 
+          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(r.status.toLowerCase()) && 
           r.details?.fromAccount === accNum)
         .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
         
       const totalReceived = userRequests
         .filter(r => r.category === 'transfer' && 
-          ['approved', 'Approved', 'pending', 'pending_clerk', 'clerk_approved'].includes(r.status) && 
-          r.details?.transferType === 'credit' && r.details?.recipient === accNum)
+          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(r.status.toLowerCase()) && 
+          r.details?.recipient === accNum)
         .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
 
       return {
@@ -190,10 +261,115 @@ export default function SecureDashboard() {
         createdAt: req.createdAt,
         status: 'Approved',
         isOfficial: false,
-        details: req.details
+        details: req.details,
+        userName: req.userName || `${userProfile?.firstName} ${userProfile?.lastName}`
       };
     })
   ];
+
+  // Prepare real transaction history from user requests
+  const transactionHistory = userRequests
+    .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
+    .flatMap(req => {
+      let amountVal = parseFloat(req.details?.amount || req.details?.deposit || 0);
+      let status = req.status === 'pending_clerk' ? 'Clerk Review' : 
+                   req.status === 'clerk_approved' ? 'Manager Review' : 
+                   req.status.charAt(0).toUpperCase() + req.status.slice(1);
+      
+      const entries = [];
+      const userAccountNums = allAccounts.map(a => a.accountNumber);
+
+      if (req.category === 'account') {
+        entries.push({
+          id: `${req.id}-credit`,
+          name: `Initial Deposit (${req.details?.accountType || 'Saving'})`,
+          date: formatAccountDate(req.createdAt),
+          rawDate: req.createdAt,
+          amount: `+₹${amountVal.toLocaleString()}`,
+          amountVal,
+          status,
+          icon: '🏦',
+          isNegative: false,
+          toAccountNum: getSimulatedAccNum(req.id),
+          category: 'account'
+        });
+      } else if (req.category === 'transfer') {
+        const fromAcc = req.details?.fromAccount || 'Unknown';
+        const toAcc = req.details?.recipient || 'Unknown';
+        const isSelfTransfer = userAccountNums.includes(toAcc);
+        
+        // Debit Entry (Money leaving source account)
+        entries.push({
+          id: `${req.id}-debit`,
+          name: `${fromAcc} to ${isSelfTransfer ? toAcc : (req.details?.recipientName || toAcc || 'Unknown')}`,
+          date: formatAccountDate(req.createdAt),
+          rawDate: req.createdAt,
+          amount: `-₹${amountVal.toLocaleString()}`,
+          amountVal,
+          status,
+          icon: '💸',
+          isNegative: true,
+          fromAccountNum: fromAcc,
+          toAccountNum: toAcc,
+          category: 'transfer'
+        });
+
+        // Credit Entry (Money entering destination account if it's mine)
+        if (isSelfTransfer) {
+          entries.push({
+            id: `${req.id}-credit`,
+            name: `${fromAcc} to ${toAcc}`,
+            date: formatAccountDate(req.createdAt),
+            rawDate: req.createdAt,
+            amount: `+₹${amountVal.toLocaleString()}`,
+            amountVal,
+            status,
+            icon: '💸',
+            isNegative: false,
+            fromAccountNum: fromAcc,
+            toAccountNum: toAcc,
+            category: 'transfer'
+          });
+        }
+      } else if (req.category === 'payment') {
+        const fromAcc = req.details?.fromAccount || 'Unknown';
+        const billCat = req.details?.billCategory;
+        const billName = billCat ? `${billCat.charAt(0).toUpperCase() + billCat.slice(1)}` : 'Bill';
+        
+        entries.push({
+          id: `${req.id}-debit`,
+          name: `${fromAcc} to ${billName}`,
+          date: formatAccountDate(req.createdAt),
+          rawDate: req.createdAt,
+          amount: `-₹${amountVal.toLocaleString()}`,
+          amountVal,
+          status,
+          icon: '🧾',
+          isNegative: true,
+          fromAccountNum: fromAcc,
+          category: 'payment'
+        });
+      }
+
+      return entries;
+    })
+    .sort((a, b) => {
+       const dateA = getDateObject(a.rawDate);
+       const dateB = getDateObject(b.rawDate);
+       return dateB.getTime() - dateA.getTime();
+     });
+
+  // Calculate real Inflow and Outflow
+  const totalInflow = transactionHistory
+    .filter(tx => !tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
+    .reduce((sum, tx) => sum + tx.amountVal, 0);
+  
+  const totalOutflow = transactionHistory
+    .filter(tx => tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
+    .reduce((sum, tx) => sum + tx.amountVal, 0);
+
+  // Calculate real total balance: Sum of all inflows minus sum of all outflows
+  const totalBalance = totalInflow - totalOutflow;
 
   const [modal, setModal] = useState({
     isOpen: false,
@@ -217,6 +393,15 @@ export default function SecureDashboard() {
     setSubmitting(false);
     setFormError('');
     setFormStep(1);
+    setBillStep(1);
+    setBillFound(null);
+    setBillAmount(0);
+    setCheckingBill(false);
+    setRechargeStep(1);
+    setRechargeSearch('');
+    setSelectedPlan(null);
+    setCcStep(1);
+    setCcPaymentStatus(null);
   };
 
   const closeModal = () => {
@@ -224,11 +409,99 @@ export default function SecureDashboard() {
     setSubmitting(false);
     setFormError('');
     setFormStep(1);
+    setBillStep(1);
+    setBillFound(null);
+    setBillAmount(0);
+    setCheckingBill(false);
+    setRechargeStep(1);
+    setRechargeSearch('');
+    setSelectedPlan(null);
+    setCcStep(1);
+    setCcPaymentStatus(null);
+  };
+
+  // Mock function to "Check Bill"
+  const handleCheckBill = (e) => {
+    e.preventDefault();
+    if (!formData.serviceNum || !formData.city || !formData.state || !formData.board) {
+      setFormError('Please fill in all mandatory fields.');
+      return;
+    }
+    
+    setCheckingBill(true);
+    setFormError('');
+    
+    // Simulate bill check delay
+    setTimeout(() => {
+      setCheckingBill(false);
+      // Mock logic: If service number ends in '0', no bill found. Otherwise, random bill.
+      if (formData.serviceNum.endsWith('0')) {
+        setBillFound(false);
+      } else {
+        setBillFound(true);
+        // Random amount between 500 and 5000
+        const mockAmt = Math.floor(Math.random() * 4500) + 500;
+        setBillAmount(mockAmt);
+        setFormData(prev => ({ ...prev, amount: mockAmt }));
+      }
+      setBillStep(2); // Show the result
+    }, 1500);
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      
+      // Reset dependent fields in electricity flow
+      if (name === 'state') updated.board = '';
+      if (name === 'board' || name === 'state') updated.city = '';
+      
+      // Credit Card Flow Logic
+      if (name === 'ccAmountOption') {
+        if (value === 'total') updated.amount = MOCK_CC_DETAILS.totalAmount;
+        else if (value === 'min') updated.amount = MOCK_CC_DETAILS.minDue;
+        else updated.amount = '';
+      }
+      
+      // Reset flows if category changes
+      if (name === 'billCategory') {
+        setRechargeStep(1);
+        setRechargeSearch('');
+        setSelectedPlan(null);
+        setCcStep(1);
+        setCcPaymentStatus(null);
+        setLoanStep(1);
+        setLoanStatus(null);
+        updated.refNum = '';
+        updated.amount = '';
+        updated.provider = '';
+        updated.rechargeType = '';
+        updated.ccAmountOption = 'total';
+        updated.bankName = '';
+        updated.cardHolder = '';
+        
+        if (value === 'credit-card') {
+          updated.ccAmountOption = 'total';
+          updated.amount = MOCK_CC_DETAILS.totalAmount;
+        } else if (value === 'loan-emi') {
+          updated.amount = MOCK_LOAN_DETAILS.emiAmount + MOCK_LOAN_DETAILS.lateFee;
+          // Clear loan holder on category change, wait for ID input
+          updated.cardHolder = '';
+        }
+      }
+
+      // Auto-fetch Loan details if ID matches
+      if (name === 'refNum' && prev.billCategory === 'loan-emi') {
+        if (value === MOCK_LOAN_DETAILS.loanId) {
+          updated.cardHolder = MOCK_LOAN_DETAILS.loanHolder;
+        } else {
+          updated.cardHolder = '';
+        }
+      }
+      
+      return updated;
+    });
     if (formError) setFormError('');
   };
 
@@ -291,28 +564,33 @@ export default function SecureDashboard() {
       }
     }
 
-    // Transfer Logic & Validation
-    if (modal.type === 'transfer') {
-      if (!formData.fromAccount || !formData.recipient || !formData.amount) {
-        setFormError('Source account, recipient, and amount are required.');
+    // Transfer & Bill Payment Logic & Validation
+    if (modal.type === 'transfer' || modal.type === 'bill-pay') {
+      if (!formData.fromAccount || !formData.amount) {
+        setFormError('Source account and amount are required.');
         return;
       }
       
       const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
-      const transferAmt = parseFloat(formData.amount);
+      const paymentAmt = parseFloat(formData.amount);
       
       if (!sourceAcc) {
         setFormError('Source account not found.');
         return;
       }
       
-      if (transferAmt <= 0) {
+      if (paymentAmt <= 0) {
         setFormError('Amount must be greater than zero.');
         return;
       }
 
-      if (transferAmt > sourceAcc.balance) {
+      if (paymentAmt > sourceAcc.balance) {
         setFormError(`Insufficient funds! Your ${sourceAcc.accountType} account only has ₹${sourceAcc.balance}.`);
+        return;
+      }
+
+      if (modal.type === 'transfer' && !formData.recipient) {
+        setFormError('Recipient is required.');
         return;
       }
     }
@@ -487,29 +765,33 @@ export default function SecureDashboard() {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
-                      <tbody>
+                      <tbody className="divide-y divide-slate-50">
                         {transactionHistory.length > 0 ? (
-                          transactionHistory.slice(0, 4).map((tx, idx) => (
+                          transactionHistory.slice(0, 5).map((tx, idx) => (
                             <tr key={tx.id || idx} className="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0">
-                              <td className="py-4 xl:py-5 px-8 xl:px-10">
+                              <td className="py-5 xl:py-6 px-8 xl:px-10">
                                 <div className="flex items-center gap-4 xl:gap-5">
-                                  <div className="w-12 h-12 xl:w-14 xl:h-14 bg-slate-100 rounded-xl xl:rounded-2xl flex items-center justify-center text-xl xl:text-2xl group-hover:scale-110 transition-transform">{tx.icon}</div>
+                                  <div className={`w-12 h-12 xl:w-14 xl:h-14 rounded-xl xl:rounded-2xl flex items-center justify-center text-xl xl:text-2xl group-hover:scale-110 transition-transform ${
+                                    !tx.isNegative ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                                  }`}>{tx.icon}</div>
                                   <div>
                                     <p className="text-sm xl:text-base font-black text-slate-900">{tx.name}</p>
                                     <p className="text-[10px] xl:text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">{tx.date}</p>
                                   </div>
                                 </div>
                               </td>
-                              <td className="py-4 xl:py-5 px-8 xl:px-10 text-right">
-                                <p className={`text-base xl:text-lg font-black ${!tx.isNegative ? 'text-green-600' : 'text-slate-900'}`}>{tx.amount}</p>
-                                <p className="text-[8px] xl:text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{tx.status}</p>
+                              <td className="py-5 xl:py-6 px-8 xl:px-10 text-right">
+                                <div className="flex flex-col items-end">
+                                  <p className={`text-base xl:text-xl font-black ${!tx.isNegative ? 'text-emerald-600' : 'text-slate-900'}`}>{tx.amount}</p>
+                                </div>
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan="2" className="py-16 xl:py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">
-                              No transactions yet
+                            <td colSpan="2" className="py-16 xl:py-20 text-center">
+                              <History size={32} className="text-slate-200 mx-auto mb-4" />
+                              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs italic">No transactions yet</p>
                             </td>
                           </tr>
                         )}
@@ -793,54 +1075,59 @@ export default function SecureDashboard() {
           <div className="space-y-10">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Transaction History</h2>
-                <p className="text-slate-500 font-medium text-lg mt-2">Complete record of all your financial activities.</p>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Financial Statement</h2>
+                <p className="text-slate-500 font-medium text-lg mt-2">Complete record of all credits and debits.</p>
               </div>
               <button onClick={() => setActiveTab('dashboard')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all flex items-center gap-3">
                 <LayoutIcon size={20} /> Back to Overview
               </button>
             </div>
 
-            <div className="bg-white rounded-[40px] shadow-xl border border-slate-100 overflow-hidden">
+            <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Transaction Details</th>
-                      <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Status</th>
-                      <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] text-right">Amount</th>
+                      <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] w-[60%]">Transaction Details</th>
+                      <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] w-[40%] text-right">Transaction Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {transactionHistory.length > 0 ? (
                       transactionHistory.map((tx, idx) => (
                         <tr key={tx.id || idx} className="group hover:bg-slate-50/50 transition-colors">
-                          <td className="py-6 px-10">
+                          <td className="py-8 px-10">
                             <div className="flex items-center gap-6">
-                              <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-sm">{tx.icon}</div>
+                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-sm ${
+                                !tx.isNegative ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {tx.icon}
+                              </div>
                               <div>
                                 <p className="text-base font-black text-slate-900">{tx.name}</p>
-                                <p className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-widest">{tx.date}</p>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{tx.date}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="py-6 px-10">
-                            <span className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                              tx.status === 'Approved' ? 'bg-emerald-50 text-emerald-600' : 
-                              tx.status === 'Rejected' ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'
-                            }`}>
-                              {tx.status}
-                            </span>
-                          </td>
-                          <td className="py-6 px-10 text-right">
-                            <p className={`text-xl font-black ${!tx.isNegative ? 'text-green-600' : 'text-slate-900'}`}>{tx.amount}</p>
+                          <td className="py-8 px-10 text-right">
+                            <div className="flex flex-col items-end">
+                              <p className={`text-2xl font-black tracking-tighter ${!tx.isNegative ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                {tx.amount}
+                              </p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                {tx.isNegative ? 'Debit' : 'Credit'}
+                              </p>
+                            </div>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="3" className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest italic">
-                          No transaction history found.
+                        <td colSpan="2" className="py-32 text-center">
+                          <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <History size={32} className="text-slate-300" />
+                          </div>
+                          <p className="text-slate-400 font-black uppercase tracking-widest italic">No transaction history found.</p>
                         </td>
                       </tr>
                     )}
@@ -1235,12 +1522,38 @@ export default function SecureDashboard() {
                         : 'External transfer requires standard bank verification.'}
                     </p>
                   </div>
+
+                  <div className="pt-6">
+                    <button 
+                      type="submit" 
+                      disabled={submitting} 
+                      className={`w-full h-16 rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest ${
+                        transferSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                      }`}
+                    >
+                      {submitting ? (
+                        <div className="flex items-center gap-3">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          Processing...
+                        </div>
+                      ) : transferSuccess ? (
+                        <div className="flex items-center gap-3 animate-in zoom-in duration-300">
+                          <CheckCircle2 className="w-7 h-7" />
+                          Transfer Complete
+                        </div>
+                      ) : (
+                        <>Transfer Now <ArrowRight size={22} /></>
+                      )}
+                    </button>
+                    <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>
+                  </div>
                 </div>
               )}
               
               {/* USE CASE: Pay bills / Recharge */}
               {modal.type === 'bill-pay' && (
                 <div className="space-y-6">
+                  {/* Common: From Account & Category Selection */}
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
@@ -1263,7 +1576,7 @@ export default function SecureDashboard() {
 
                       <div className="space-y-2">
                         <label className="label">Category</label>
-                        <select name="billCategory" onChange={handleInputChange} className="input" required>
+                        <select name="billCategory" onChange={handleInputChange} value={formData.billCategory || ''} className="input" required>
                           <option value="">Select category</option>
                           <option value="electricity">Electricity Bill</option>
                           <option value="credit-card">Credit Card Bill Payment</option>
@@ -1272,17 +1585,878 @@ export default function SecureDashboard() {
                         </select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Input label="Reference Number" name="refNum" placeholder="Consumer ID / Card Num / Mobile" onChange={handleInputChange} required />
-                      <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
-                    </div>
+
+                    {/* Default Form for other categories */}
+                    {formData.billCategory && !['electricity', 'mobile-recharge', 'credit-card', 'loan-emi'].includes(formData.billCategory) && (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <Input label="Reference Number" name="refNum" placeholder="Consumer ID / Card Num / Mobile" onChange={handleInputChange} required />
+                          <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
+                        </div>
+                        <div className="pt-4">
+                          <button 
+                            type="submit" 
+                            disabled={submitting}
+                            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
+                          >
+                            {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Payment <ArrowRight size={18} /></>}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* SPECIAL FLOW: Loan EMI Payment */}
+                  {formData.billCategory === 'loan-emi' && (() => {
+                    const showLoanDetails = formData.refNum === MOCK_LOAN_DETAILS.loanId;
+                    const emiAmount = MOCK_LOAN_DETAILS.emiAmount;
+                    const penalty = MOCK_LOAN_DETAILS.lateFee;
+                    const totalPayable = emiAmount + penalty;
+                    const isAmountBelowEmi = showLoanDetails && parseFloat(formData.amount || 0) < emiAmount;
+                    
+                    const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+                    const isBalanceInsufficient = sourceAccount && sourceAccount.balance < parseFloat(formData.amount || 0);
+
+                    return (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                        {loanStep === 1 && (
+                          <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <Input 
+                                label="Loan Account Number / ID" 
+                                name="refNum" 
+                                placeholder="Enter Loan ID (Try: AD14235346457567)" 
+                                onChange={handleInputChange} 
+                                value={formData.refNum || ''} 
+                                required 
+                              />
+                              {showLoanDetails && (
+                                <div className="animate-in fade-in slide-in-from-left-4">
+                                  <Input 
+                                    label="Account Holder Name" 
+                                    name="cardHolder" 
+                                    placeholder="Fetching..." 
+                                    value={formData.cardHolder || ''} 
+                                    readOnly
+                                    required 
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {showLoanDetails && (
+                              <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+                                {/* Loan Overview Cards */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Loan</p>
+                                    <p className="text-xs font-black text-slate-900">₹{MOCK_LOAN_DETAILS.totalLoanAmount.toLocaleString()}</p>
+                                  </div>
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest</p>
+                                    <p className="text-xs font-black text-slate-900">₹{MOCK_LOAN_DETAILS.interestAmount.toLocaleString()}</p>
+                                  </div>
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining</p>
+                                    <p className="text-xs font-black text-blue-600">₹{MOCK_LOAN_DETAILS.remainingBalance.toLocaleString()}</p>
+                                  </div>
+                                  <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 shadow-sm text-center">
+                                    <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest mb-1">Late Fee</p>
+                                    <p className="text-xs font-black text-rose-600">₹{penalty.toLocaleString()}</p>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">EMI Amount</p>
+                                    <p className="text-sm font-black text-slate-900">₹{emiAmount.toLocaleString()}</p>
+                                  </div>
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
+                                    <p className="text-sm font-black text-rose-500">{MOCK_LOAN_DETAILS.dueDate}</p>
+                                  </div>
+                                </div>
+
+                                <div className="p-6 bg-blue-600 rounded-[32px] border border-blue-500 shadow-xl shadow-blue-100 flex items-center justify-between text-white">
+                                  <div>
+                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Total Payable (EMI + Penalty)</p>
+                                    <p className="text-3xl font-black">₹{totalPayable.toLocaleString()}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Status</p>
+                                    <span className="px-3 py-1 bg-rose-500 text-white text-[10px] font-black rounded-full uppercase tracking-tighter shadow-sm">Overdue</span>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <label className="label">Amount to Pay (₹)</label>
+                                  <div className="relative">
+                                    <input 
+                                      type="number" 
+                                      name="amount" 
+                                      className={`input ${isAmountBelowEmi ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
+                                      placeholder="Enter amount to pay" 
+                                      onChange={handleInputChange} 
+                                      value={formData.amount || ''} 
+                                      required 
+                                    />
+                                    {isAmountBelowEmi && (
+                                      <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
+                                        Min ₹{emiAmount.toLocaleString()} required for EMI
+                                      </p>
+                                    )}
+                                    {!isAmountBelowEmi && parseFloat(formData.amount || 0) > totalPayable && (
+                                      <p className="absolute -bottom-5 left-0 text-[9px] font-black text-blue-500 uppercase tracking-widest animate-in slide-in-from-top-1">
+                                        Prepayment applied (closing loan faster)
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex gap-4 pt-4">
+                              <button 
+                                type="button" 
+                                onClick={closeModal}
+                                className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  if (!formData.fromAccount) {
+                                    setFormError('Please select a source account to pay from.');
+                                    return;
+                                  }
+                                  if (isAmountBelowEmi) {
+                                    setFormError(`EMI payment must be at least ₹${emiAmount.toLocaleString()}.`);
+                                    return;
+                                  }
+                                  if (isBalanceInsufficient) {
+                                    setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
+                                    return;
+                                  }
+                                  if (!formData.refNum || !formData.cardHolder || !formData.amount) {
+                                    setFormError('Please fill in all required fields.');
+                                    return;
+                                  }
+                                  
+                                  setFormError('');
+                                  setSubmitting(true);
+                                  // Simulate EMI payment processing
+                                  setTimeout(() => {
+                                    setSubmitting(false);
+                                    setLoanStatus('success');
+                                    setLoanStep(2);
+                                  }, 2000);
+                                }}
+                                disabled={submitting || !showLoanDetails || isAmountBelowEmi}
+                                className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
+                              >
+                                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay EMI <ArrowRight size={18} /></>}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {loanStep === 2 && (
+                          <div className="p-10 bg-white rounded-[40px] border border-slate-100 shadow-2xl space-y-10 animate-in zoom-in-95 text-center">
+                            <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 mb-2 animate-in bounce-in duration-700">
+                              <CheckCircle2 size={56} />
+                            </div>
+                            <div className="space-y-3">
+                              <h4 className="text-3xl font-black text-slate-900 tracking-tight">EMI Paid!</h4>
+                              <p className="text-slate-500 font-medium text-lg">Your Loan EMI payment of ₹{parseFloat(formData.amount).toLocaleString()} was successful.</p>
+                            </div>
+                            <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 text-left space-y-4">
+                              <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Loan ID</span>
+                                <span className="font-bold text-slate-900">{formData.refNum}</span>
+                              </div>
+                              <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Account</span>
+                                <span className="font-mono font-bold text-slate-900">{formData.fromAccount}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Receipt ID</span>
+                                <span className="font-mono font-bold text-slate-900">EMI{Math.floor(Math.random() * 90000000 + 10000000)}</span>
+                              </div>
+                            </div>
+                            <button 
+                              type="button" 
+                              onClick={closeModal}
+                              className="w-full h-16 bg-slate-900 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-sm"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );})()}
+
+                  {/* SPECIAL FLOW: Credit Card Bill Payment */}
+                  {formData.billCategory === 'credit-card' && (() => {
+                    const showCcAmountFields = formData.refNum?.length === 16 && formData.cardHolder && formData.bankName;
+                    const isCustomAmount = formData.ccAmountOption === 'custom';
+                    const isAmountBelowMin = isCustomAmount && parseFloat(formData.amount || 0) < MOCK_CC_DETAILS.minDue;
+                    
+                    return (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                      {/* Step 1: CC Details Form */}
+                      {ccStep === 1 && (
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Input 
+                              label="Credit Card Number" 
+                              name="refNum" 
+                              maxLength="16"
+                              placeholder="XXXX XXXX XXXX XXXX" 
+                              onChange={handleInputChange} 
+                              value={formData.refNum || ''} 
+                              required 
+                            />
+                            <Input 
+                              label="Card Holder Name" 
+                              name="cardHolder" 
+                              placeholder="As on card" 
+                              onChange={handleInputChange} 
+                              value={formData.cardHolder || ''} 
+                              required 
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                              <label className="label">Bank Name</label>
+                              <select 
+                                name="bankName" 
+                                onChange={handleInputChange} 
+                                value={formData.bankName || ''} 
+                                className="input" 
+                                required
+                              >
+                                <option value="">Select Bank</option>
+                                {CC_BANKS.map(bank => (
+                                  <option key={bank} value={bank}>{bank}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {showCcAmountFields && (
+                              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                <label className="label">Amount to Pay (₹)</label>
+                                <div className="relative">
+                                  <input 
+                                    type="number" 
+                                    name="amount" 
+                                    className={`input ${isAmountBelowMin ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
+                                    placeholder="0.00" 
+                                    onChange={handleInputChange} 
+                                    value={formData.amount || ''} 
+                                    required 
+                                    readOnly={!isCustomAmount}
+                                  />
+                                  {isAmountBelowMin && (
+                                    <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
+                                      Min ₹{MOCK_CC_DETAILS.minDue.toLocaleString()} required
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {showCcAmountFields && (
+                            <>
+                              {/* Extra Features: Outstanding & Due Date */}
+                              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
+                                  <p className="text-sm font-black text-slate-900">₹{MOCK_CC_DETAILS.outstanding.toLocaleString()}</p>
+                                </div>
+                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
+                                  <p className="text-sm font-black text-rose-500">{MOCK_CC_DETAILS.dueDate}</p>
+                                </div>
+                              </div>
+
+                              {/* Amount Options (Radio Buttons) */}
+                              <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Payment Option</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                  {[
+                                    { id: 'total', label: 'Total Amount', value: MOCK_CC_DETAILS.totalAmount },
+                                    { id: 'min', label: 'Minimum Due', value: MOCK_CC_DETAILS.minDue },
+                                    { id: 'custom', label: 'Custom Amount', value: '' }
+                                  ].map((option) => (
+                                    <label 
+                                      key={option.id}
+                                      className={`flex items-center justify-between p-4 bg-white border-2 rounded-2xl cursor-pointer transition-all ${
+                                        formData.ccAmountOption === option.id 
+                                          ? 'border-blue-600 ring-4 ring-blue-50 shadow-md' 
+                                          : 'border-slate-100 hover:border-blue-100'
+                                      }`}
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{option.label}</span>
+                                        {option.value && <span className="text-xs font-bold text-blue-600">₹{option.value.toLocaleString()}</span>}
+                                      </div>
+                                      <input 
+                                        type="radio" 
+                                        name="ccAmountOption" 
+                                        value={option.id} 
+                                        checked={formData.ccAmountOption === option.id}
+                                        onChange={handleInputChange}
+                                        className="hidden"
+                                      />
+                                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                        formData.ccAmountOption === option.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200'
+                                      }`}>
+                                        {formData.ccAmountOption === option.id && <Check size={10} strokeWidth={4} />}
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          <div className="flex gap-4 pt-4">
+                            <button 
+                              type="button" 
+                              onClick={closeModal}
+                              className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                if (!formData.fromAccount) {
+                                  setFormError('Please select a source account to pay from.');
+                                  return;
+                                }
+                                const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+                                if (!sourceAccount || sourceAccount.balance < parseFloat(formData.amount || 0)) {
+                                  setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
+                                  return;
+                                }
+                                if (formData.refNum?.length !== 16) {
+                                  setFormError('Credit card number must be 16 digits.');
+                                  return;
+                                }
+                                if (!formData.cardHolder || !formData.bankName || !formData.amount) {
+                                  setFormError('Please fill in all required fields.');
+                                  return;
+                                }
+                                if (isAmountBelowMin) {
+                                  setFormError(`Custom payment must be at least ₹${MOCK_CC_DETAILS.minDue.toLocaleString()}.`);
+                                  return;
+                                }
+                                setFormError('');
+                                setSubmitting(true);
+                                // Simulate direct payment processing
+                                setTimeout(() => {
+                                  setSubmitting(false);
+                                  setCcPaymentStatus('success');
+                                  setCcStep(2);
+                                }, 2000);
+                              }}
+                              disabled={submitting || !showCcAmountFields || isAmountBelowMin || !formData.fromAccount}
+                              className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
+                            >
+                              {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay Now <ArrowRight size={18} /></>}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 2: Success / Failure Result */}
+                      {ccStep === 2 && (
+                        <div className="p-10 bg-white rounded-[40px] border border-slate-100 shadow-2xl space-y-10 animate-in zoom-in-95 text-center">
+                          {ccPaymentStatus === 'success' ? (
+                            <>
+                              <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 mb-2 animate-in bounce-in duration-700">
+                                <CheckCircle2 size={56} />
+                              </div>
+                              <div className="space-y-3">
+                                <h4 className="text-3xl font-black text-slate-900 tracking-tight">Payment Successful!</h4>
+                                <p className="text-slate-500 font-medium text-lg">Your credit card bill payment of ₹{parseFloat(formData.amount).toLocaleString()} was processed successfully.</p>
+                              </div>
+                              <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 text-left space-y-4">
+                                <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Bank</span>
+                                  <span className="font-bold text-slate-900">{formData.bankName}</span>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Card</span>
+                                  <span className="font-mono font-bold text-slate-900">XXXX-XXXX-XXXX-{formData.refNum?.slice(-4)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Ref ID</span>
+                                  <span className="font-mono font-bold text-slate-900">TXN{Math.floor(Math.random() * 90000000 + 10000000)}</span>
+                                </div>
+                              </div>
+                              <button 
+                                type="button" 
+                                onClick={closeModal}
+                                className="w-full h-16 bg-slate-900 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-sm"
+                              >
+                                Done
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-24 h-24 bg-rose-50 rounded-full flex items-center justify-center mx-auto text-rose-500 mb-2">
+                                <X size={56} />
+                              </div>
+                              <div className="space-y-3">
+                                <h4 className="text-3xl font-black text-rose-600 tracking-tight">Payment Failed</h4>
+                                <p className="text-slate-500 font-medium text-lg">We couldn't process your payment at this moment.</p>
+                              </div>
+                              <div className="p-6 bg-rose-50 rounded-[32px] border border-rose-100">
+                                <p className="text-sm font-bold text-rose-700 italic">"Transaction declined by bank. Please try again later."</p>
+                              </div>
+                              <div className="flex flex-col gap-3">
+                                <button 
+                                  type="button" 
+                                  onClick={() => setCcStep(1)}
+                                  className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-sm"
+                                >
+                                  Try Again
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={closeModal}
+                                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                  Close
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );})()}
+
+                  {/* SPECIAL FLOW: Electricity Bill */}
+                  {formData.billCategory === 'electricity' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                      {/* Step 1: Selection & Details */}
+                      {billStep === 1 ? (
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                              <label className="label">Select State</label>
+                              <select name="state" onChange={handleInputChange} value={formData.state || ''} className="input" required>
+                                <option value="">Select State</option>
+                                {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="label">Electricity Board</label>
+                              <select name="board" onChange={handleInputChange} value={formData.board || ''} className="input" required disabled={!formData.state}>
+                                <option value="">Select Board</option>
+                                {(ELECTRICITY_BOARDS[formData.state] || ["Generic Power Distribution"]).map(b => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Input label="Service Number" name="serviceNum" placeholder="Enter Service/Consumer Number" onChange={handleInputChange} value={formData.serviceNum || ''} required />
+                            <div className="space-y-2">
+                              <label className="label">Select City</label>
+                              <select name="city" onChange={handleInputChange} value={formData.city || ''} className="input" required disabled={!formData.board}>
+                                <option value="">Select City</option>
+                                {(BOARD_CITIES[formData.board] || ["Main City", "Other City"]).map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <Input label="Nickname (Optional)" name="nickname" placeholder="e.g. Home, Office" onChange={handleInputChange} value={formData.nickname || ''} />
+
+                          <div className="pt-4">
+                            <button 
+                              type="button" 
+                              onClick={handleCheckBill}
+                              disabled={checkingBill || !formData.state || !formData.board || !formData.serviceNum || !formData.city}
+                              className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
+                            >
+                              {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Proceed <ArrowRight size={18} /></>}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Step 2: Bill Result */
+                        <div className="p-8 bg-white rounded-3xl border border-slate-100 shadow-xl space-y-8 animate-in zoom-in-95 duration-300 text-center">
+                          {billFound ? (
+                            <>
+                              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-4">
+                                <Receipt size={40} />
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="text-2xl font-black text-slate-900 tracking-tight">Bill Due Found!</h4>
+                                <p className="text-slate-500 font-medium">Electricity Bill for {formData.board}</p>
+                              </div>
+                              <div className="p-6 bg-slate-900 rounded-[32px] text-white">
+                                <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2">Amount Due</p>
+                                <p className="text-4xl font-black tracking-tight">₹{billAmount.toLocaleString()}</p>
+                              </div>
+                              <div className="flex flex-col gap-3">
+                                <button 
+                                  type="submit" 
+                                  disabled={submitting}
+                                  className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+                                >
+                                  {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Pay Now <ArrowRight size={20} /></>}
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => setBillStep(1)}
+                                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                  Cancel & Back
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 mb-4">
+                                <CheckCircle2 size={40} />
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="text-2xl font-black text-slate-900 tracking-tight">No bill due</h4>
+                                <p className="text-emerald-600 font-bold uppercase tracking-widest text-xs">No amount due on your bill</p>
+                                <p className="text-slate-500 font-medium mt-4">Everything is up to date for service number {formData.serviceNum}.</p>
+                              </div>
+                              <div className="pt-6">
+                                <button 
+                                  type="button" 
+                                  onClick={closeModal}
+                                  className="w-full h-14 bg-slate-900 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-xs"
+                                >
+                                  Close
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SPECIAL FLOW: Mobile Recharge */}
+                  {formData.billCategory === 'mobile-recharge' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                      {/* Step 1: Mobile Number & Contacts */}
+                      {rechargeStep === 1 && (
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                          <div className="space-y-2">
+                            <label className="label">Enter Mobile Number</label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">+91</span>
+                              <input 
+                                type="text" 
+                                name="refNum"
+                                maxLength="10"
+                                placeholder="98765 43210"
+                                value={formData.refNum || ''}
+                                onChange={handleInputChange}
+                                className="input pl-14"
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recent Contacts</h5>
+                              <div className="relative w-32 xl:w-48">
+                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                  type="text" 
+                                  placeholder="Search..." 
+                                  value={rechargeSearch}
+                                  onChange={(e) => setRechargeSearch(e.target.value)}
+                                  className="w-full h-8 pl-8 pr-3 bg-white border border-slate-100 rounded-full text-[10px] focus:outline-none focus:border-blue-200"
+                                />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                              {MOCK_CONTACTS
+                                .filter(c => c.name.toLowerCase().includes(rechargeSearch.toLowerCase()) || c.number.includes(rechargeSearch))
+                                .map(contact => (
+                                  <button
+                                    key={contact.number}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, refNum: contact.number }));
+                                      setRechargeStep(2);
+                                    }}
+                                    className="flex items-center justify-between p-3 bg-white hover:bg-blue-50 border border-slate-100 rounded-2xl transition-all group text-left"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs uppercase">
+                                        {contact.name.charAt(0)}
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-black text-slate-900">{contact.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-medium">{contact.number}</p>
+                                      </div>
+                                    </div>
+                                    <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-400 transition-colors" />
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+
+                          <div className="pt-4">
+                            <button 
+                              type="button" 
+                              onClick={() => setRechargeStep(2)}
+                              disabled={!formData.refNum || formData.refNum.length !== 10}
+                              className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
+                            >
+                              Next Step <ArrowRight size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 2: Prepaid/Postpaid & Provider */}
+                      {rechargeStep === 2 && (
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-8 animate-in slide-in-from-right-4">
+                          <div className="space-y-4 text-center">
+                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Select Recharge Type</p>
+                            <div className="flex p-1.5 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                              <button 
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, rechargeType: 'prepaid' }))}
+                                className={`flex-1 h-12 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                                  formData.rechargeType === 'prepaid' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-400 hover:text-slate-600'
+                                }`}
+                              >
+                                Prepaid
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, rechargeType: 'postpaid' }))}
+                                className={`flex-1 h-12 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                                  formData.rechargeType === 'postpaid' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-400 hover:text-slate-600'
+                                }`}
+                              >
+                                Postpaid
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-center">Select Provider</p>
+                            <div className="grid grid-cols-3 gap-4">
+                              {MOBILE_PROVIDERS.map(provider => (
+                                <button
+                                  key={provider.name}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, provider: provider.name }))}
+                                  className={`group relative flex flex-col items-center justify-center gap-3 p-5 bg-white rounded-3xl border-2 transition-all active:scale-95 ${
+                                    formData.provider === provider.name 
+                                      ? 'border-blue-600 shadow-xl shadow-blue-50 ring-4 ring-blue-50' 
+                                      : 'border-slate-100 hover:border-blue-200 hover:shadow-lg hover:shadow-slate-100'
+                                  }`}
+                                >
+                                  {formData.provider === provider.name && (
+                                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg animate-in zoom-in duration-300">
+                                      <Check size={14} strokeWidth={3} />
+                                    </div>
+                                  )}
+                                  <div 
+                                    className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-xs shadow-inner transition-transform group-hover:scale-110"
+                                    style={{ backgroundColor: provider.color }}
+                                  >
+                                    {provider.name.charAt(0)}
+                                  </div>
+                                  <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${
+                                    formData.provider === provider.name ? 'text-blue-600' : 'text-slate-500'
+                                  }`}>
+                                    {provider.name}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-4 pt-4">
+                            <button 
+                              type="button" 
+                              onClick={() => setRechargeStep(1)}
+                              className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
+                            >
+                              Back
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setRechargeStep(3);
+                                setRechargeSearch('');
+                              }}
+                              disabled={!formData.rechargeType || !formData.provider}
+                              className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-100 flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs active:scale-95"
+                            >
+                              Select Plan <ArrowRight size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 3: Plan Selection */}
+                      {rechargeStep === 3 && (
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6 animate-in slide-in-from-right-4">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Available Plans for {formData.provider}</h5>
+                              <div className="relative w-48">
+                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                  type="text" 
+                                  placeholder="Search plan by price, data..." 
+                                  value={rechargeSearch}
+                                  onChange={(e) => setRechargeSearch(e.target.value)}
+                                  className="w-full h-10 pl-10 pr-4 bg-white border border-slate-100 rounded-2xl text-[10px] focus:outline-none focus:border-blue-200"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 max-h-72 overflow-y-auto pr-2 custom-scrollbar">
+                              {(RECHARGE_PLANS[formData.provider] || [])
+                                .filter(p => p.price.toString().includes(rechargeSearch) || p.data.toLowerCase().includes(rechargeSearch.toLowerCase()) || p.type.toLowerCase().includes(rechargeSearch.toLowerCase()))
+                                .map(plan => (
+                                  <button
+                                    key={plan.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPlan(plan);
+                                      setFormData(prev => ({ ...prev, amount: plan.price, planId: plan.id }));
+                                    }}
+                                    className={`flex items-center justify-between p-4 bg-white rounded-2xl border-2 transition-all text-left ${
+                                      selectedPlan?.id === plan.id ? 'border-blue-600 shadow-md ring-4 ring-blue-50' : 'border-slate-100 hover:border-blue-100'
+                                    }`}
+                                  >
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xl font-black text-slate-900">₹{plan.price}</span>
+                                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded-full uppercase tracking-tighter">{plan.type}</span>
+                                      </div>
+                                      <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1 text-slate-500">
+                                          <Database size={10} />
+                                          <span className="text-[10px] font-bold">{plan.data}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-slate-500">
+                                          <Clock size={10} />
+                                          <span className="text-[10px] font-bold">{plan.validity}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                      selectedPlan?.id === plan.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200'
+                                    }`}>
+                                      {selectedPlan?.id === plan.id && <Check size={12} />}
+                                    </div>
+                                  </button>
+                                ))
+                              }
+                            </div>
+                          </div>
+
+                          <div className="flex gap-4 pt-4">
+                            <button 
+                              type="button" 
+                              onClick={() => setRechargeStep(2)}
+                              className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs"
+                            >
+                              Back
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => setRechargeStep(4)}
+                              disabled={!selectedPlan}
+                              className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
+                            >
+                              Confirm Plan <ArrowRight size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 4: Final Confirmation */}
+                      {rechargeStep === 4 && selectedPlan && (
+                        <div className="p-8 bg-white rounded-[40px] border border-slate-100 shadow-2xl space-y-8 animate-in zoom-in-95 text-center">
+                          <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-2">
+                            <Smartphone size={40} />
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <h4 className="text-2xl font-black text-slate-900">Confirm Recharge</h4>
+                            <p className="text-slate-500 text-sm font-medium">For +91 {formData.refNum}</p>
+                          </div>
+
+                          <div className="p-6 bg-slate-900 rounded-[32px] text-white text-left space-y-4">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                              <div>
+                                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Operator</p>
+                                <p className="text-sm font-black">{formData.provider} - {formData.rechargeType.toUpperCase()}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Amount</p>
+                                <p className="text-xl font-black">₹{selectedPlan.price}</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Data</p>
+                                <p className="text-xs font-bold">{selectedPlan.data}</p>
+                              </div>
+                              <div>
+                                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Validity</p>
+                                <p className="text-xs font-bold">{selectedPlan.validity}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-3">
+                            <button 
+                              type="submit" 
+                              disabled={submitting}
+                              className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+                            >
+                              {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Proceed to Pay <ArrowRight size={20} /></>}
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => setRechargeStep(3)}
+                              className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                            >
+                              Change Plan
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* USE CASE: Request services */}
               {modal.type === 'request-services' && (
-                <>
+                <div className="space-y-6">
                   <div className="space-y-2">
                     <label className="label">Service Type</label>
                     <select name="serviceType" onChange={handleInputChange} className="input" required>
@@ -1294,35 +2468,26 @@ export default function SecureDashboard() {
                     </select>
                   </div>
                   <Input label="Additional Details" name="details" placeholder="Explain your request..." onChange={handleInputChange} />
-                </>
+                  
+                  <div className="pt-6">
+                    <button 
+                      type="submit" 
+                      disabled={submitting} 
+                      className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest shadow-blue-100"
+                    >
+                      {submitting ? (
+                        <div className="flex items-center gap-3">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          Processing...
+                        </div>
+                      ) : (
+                        <>Submit {modal.title} Request <ArrowRight size={22} /></>
+                      )}
+                    </button>
+                    <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>
+                  </div>
+                </div>
               )}
-
-              <div className="pt-6">
-                <button 
-                  type="submit" 
-                  disabled={submitting} 
-                  className={`w-full h-16 rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest ${
-                    transferSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-                  }`}
-                >
-                  {submitting ? (
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                      Processing...
-                    </div>
-                  ) : transferSuccess ? (
-                    <div className="flex items-center gap-3 animate-in zoom-in duration-300">
-                      <CheckCircle2 className="w-7 h-7" />
-                      Transfer Complete
-                    </div>
-                  ) : (
-                    <>
-                      {modal.type === 'transfer' ? 'Transfer Now' : `Submit ${modal.title} Request`} <ArrowRight size={22} />
-                    </>
-                  )}
-                </button>
-                <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>
-              </div>
             </>
           )}
         </form>
@@ -1440,7 +2605,16 @@ export default function SecureDashboard() {
                               <span className="text-xl">{tx.icon}</span>
                               <div>
                                 <p className="text-sm font-bold text-slate-900">{tx.name}</p>
-                                <p className="text-[10px] text-slate-400 uppercase font-medium">{tx.date}</p>
+                                <div className="flex flex-col gap-0.5 mt-1">
+                                  <p className="text-[10px] text-slate-400 uppercase font-medium">{tx.date}</p>
+                                  {tx.category === 'transfer' && (
+                                    <p className="text-[9px] text-slate-500 font-bold">
+                                      {tx.fromAccountNum === selectedAccount.accountNumber 
+                                        ? `To: ${tx.toAccountNum}` 
+                                        : `From: ${tx.fromAccountNum}`}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -1450,7 +2624,6 @@ export default function SecureDashboard() {
                             }`}>
                               {tx.toAccountNum === selectedAccount.accountNumber ? `+₹${tx.amountVal.toLocaleString()}` : tx.amount}
                             </p>
-                            <p className="text-[8px] font-black text-slate-400 uppercase">{tx.status}</p>
                           </td>
                         </tr>
                       ))}

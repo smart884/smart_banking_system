@@ -15,10 +15,12 @@ import {
   FileText,
   Menu,
   X,
-  ShieldAlert,
+ ShieldAlert,
   ArrowRight,
   TrendingUp,
-  Clock
+  Clock,
+  CreditCard,
+  Landmark
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/ui/Modal';
@@ -29,7 +31,14 @@ import Button from '../components/ui/Button';
  * Enterprise-grade banking admin panel.
  */
 export default function ManagerDashboard() {
-  const { userProfile, logout, requests, updateRequestStatus } = useAuth();
+  const { 
+    userProfile, 
+    logout, 
+    requests, 
+    serviceRequests, 
+    updateRequestStatus, 
+    updateServiceRequestStatus // Renamed
+  } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedReq, setSelectedReq] = useState(null);
@@ -50,24 +59,46 @@ export default function ManagerDashboard() {
 
   const handleAction = async (status) => {
     if (!selectedReq) return;
-    const finalStatus = status === 'approved' ? 'manager_approved' : 'rejected';
-    await updateRequestStatus(selectedReq.id, finalStatus, managerRemarks);
-    showToast(`Final Review: ${status === 'approved' ? 'Account Authorized ✅' : 'Rejected ❌'}`);
+    
+    // Check if it's a ServiceRequest (Credit Card, Debit Card, Loan, KYC)
+    const serviceType = selectedReq.type?.toLowerCase() || '';
+    const isServiceReq = serviceType.includes('card') || serviceType.includes('loan') || serviceType.includes('kyc');
+
+    if (isServiceReq) {
+      const finalStatus = status === 'approved' ? 'S' : 'R';
+      await updateServiceRequestStatus(selectedReq.id, finalStatus, managerRemarks);
+      showToast(`${selectedReq.type}: ${status === 'approved' ? 'Approved ✅' : 'Rejected ❌'}`);
+    } else {
+      const finalStatus = status === 'approved' ? 'manager_approved' : 'rejected';
+      await updateRequestStatus(selectedReq.id, finalStatus, managerRemarks);
+      showToast(`Final Review: ${status === 'approved' ? 'Account Authorized ✅' : 'Rejected ❌'}`);
+    }
+    
     setSelectedReq(null);
     setManagerRemarks('');
   };
 
-  // Banking Workflow Filter: Managers see 'clerk_approved' or all requests
-  const filteredRequests = requests.filter(r => 
-    (activeTab === 'dashboard' && r.status === 'clerk_approved') || 
-    (activeTab === 'requests')
-  );
+  // Banking Workflow Filter
+  const filteredRequests = (activeTab === 'credit-cards' || activeTab === 'loans' || activeTab === 'kyc')
+    ? serviceRequests.filter(r => {
+        if (activeTab === 'credit-cards') return r.type?.toLowerCase().includes('card') && (r.status === 'I' || r.status === 'S' || r.status === 'R');
+        if (activeTab === 'loans') return r.type?.toLowerCase().includes('loan') && (r.status === 'I' || r.status === 'S' || r.status === 'R');
+        if (activeTab === 'kyc') return r.type?.toLowerCase().includes('kyc') && (r.status === 'I' || r.status === 'S' || r.status === 'R');
+        return false;
+      })
+    : requests.filter(r => 
+        (activeTab === 'dashboard' && r.status === 'clerk_approved') || 
+        (activeTab === 'requests')
+      );
 
-  const navLinks = [
-    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-    { id: 'requests', label: 'All Requests', icon: ShieldAlert },
-    { id: 'reports', label: 'Analytics', icon: BarChart3 },
-  ];
+    const navLinks = [
+      { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+      { id: 'requests', label: 'All Requests', icon: ShieldAlert },
+      { id: 'credit-cards', label: 'Card Requests', icon: CreditCard },
+      { id: 'loans', label: 'Loan Requests', icon: Landmark },
+      { id: 'kyc', label: 'KYC Updates', icon: ShieldCheck },
+      { id: 'reports', label: 'Analytics', icon: BarChart3 },
+    ];
 
   const renderContent = () => {
     switch (activeTab) {
@@ -101,7 +132,7 @@ export default function ManagerDashboard() {
                             <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
                                <td className="px-8 py-6">
                                   <div className="flex items-center gap-4">
-                                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName[0]}</div>
+                                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName?.[0] || 'U'}</div>
                                      <p className="text-sm font-black text-slate-900">{req.userName}</p>
                                   </div>
                                </td>
@@ -236,6 +267,98 @@ export default function ManagerDashboard() {
              </div>
           </div>
         );
+      case 'credit-cards':
+      case 'loans':
+      case 'kyc':
+        return (
+          <div className="space-y-10">
+            <div className="flex items-center justify-between">
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                {activeTab === 'credit-cards' ? 'Card Approvals' : 
+                 activeTab === 'loans' ? 'Loan Approvals' : 'KYC Document Reviews'}
+              </h2>
+              <div className="px-5 py-2 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100 flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                {filteredRequests.filter(r => r.status === 'I').length} Awaiting Final Decision
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">User Details</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Info</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredRequests.length === 0 ? (
+                    <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests in this pipeline.</td></tr>
+                  ) : filteredRequests.map((req) => (
+                    <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName?.[0] || 'U'}</div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900">{req.userName}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.accountNumber || 'SYSTEM'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        {req.type?.toLowerCase().includes('loan') ? (
+                          <>
+                            <p className="text-sm font-black text-slate-900">₹{parseFloat(req.loanAmount || 0).toLocaleString()}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.tenure} Months | {req.purpose}</p>
+                          </>
+                        ) : req.type?.toLowerCase().includes('card') ? (
+                          <>
+                            <p className="text-sm font-black text-slate-900">₹{parseFloat(req.income || 0).toLocaleString()}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.employmentType} | {req.pan}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-black text-slate-900">{req.newName || req.userName}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.newMobile || req.mobile}</p>
+                          </>
+                        )}
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                          req.status === 'P' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                          req.status === 'I' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                          req.status === 'S' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                          'bg-rose-50 text-rose-600 border border-rose-100'
+                        }`}>
+                          {req.status === 'P' ? 'Pending (P)' : 
+                           req.status === 'I' ? 'In Progress (I)' : 
+                           req.status === 'S' ? 'Solved (S)' : 'Rejected (R)'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <button 
+                          onClick={() => {
+                            setSelectedReq({
+                              ...req,
+                              details: {
+                                ...req
+                              }
+                            });
+                          }}
+                          className="px-5 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
+                        >
+                          Review & Approve
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
       default: return null;
     }
   };
@@ -289,7 +412,7 @@ export default function ManagerDashboard() {
           <div className="space-y-8">
             <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-[24px] border border-slate-100">
               <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl">
-                {selectedReq.userName[0]}
+                {selectedReq.userName?.[0] || 'U'}
               </div>
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Requester Name</p>
@@ -305,13 +428,40 @@ export default function ManagerDashboard() {
               
               {/* Dynamic Fields */}
               <div className="grid grid-cols-2 gap-6 pt-4">
-                  {Object.entries(selectedReq.details || {}).map(([key, value]) => (
-                    <div key={key}>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                      <p className="font-bold text-sm text-white truncate">{String(value)}</p>
-                    </div>
-                  ))}
+                  {Object.entries(selectedReq.details || {}).map(([key, value]) => {
+                    if (key === 'documents' || key === 'previews' || key === 'documentPreview') return null;
+                    return (
+                      <div key={key}>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                        <p className="font-bold text-sm text-white truncate">{String(value)}</p>
+                      </div>
+                    );
+                  })}
               </div>
+
+              {/* Document Display Section */}
+              {(selectedReq.details?.documents || selectedReq.details?.documentPreview) && (
+                <div className="pt-6 border-t border-white/10 space-y-4">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Evidence Verification</p>
+                  
+                  {selectedReq.details.documents ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(selectedReq.details.documents).map(([key, url]) => url && (
+                        <div key={key} className="relative group rounded-2xl overflow-hidden border border-white/10 bg-white/5 aspect-video">
+                          <img src={url} alt={key} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-0 bg-slate-900/60 flex items-end p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <p className="text-[8px] font-black text-white uppercase tracking-widest">{key.replace(/([A-Z])/g, ' $1')}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl overflow-hidden border border-white/10 bg-white/5">
+                      <img src={selectedReq.details.documentPreview} alt="Evidence" className="w-full h-auto max-h-48 object-contain" />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Clerk Remarks if available */}
               {selectedReq.clerkRemark && (
@@ -322,7 +472,7 @@ export default function ManagerDashboard() {
               )}
             </div>
 
-            {selectedReq.status === 'clerk_approved' && (
+            {(selectedReq.status === 'clerk_approved' || selectedReq.status === 'I') && (
               <div className="space-y-6">
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Manager Approval Remarks</label>

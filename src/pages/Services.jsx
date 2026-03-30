@@ -2,7 +2,8 @@ import React from 'react';
 import Layout from '../components/Layout';
 import Section from '../components/ui/Section';
 import Container from '../components/ui/Container';
-import { CreditCard, Send, Wallet, PieChart, ShieldCheck, Headphones, Zap, TrendingUp, Landmark } from 'lucide-react';
+import { CreditCard, Send, Wallet, PieChart, ShieldCheck, Headphones, Zap, TrendingUp, Landmark, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Services() {
   return (
@@ -43,7 +44,8 @@ export default function Services() {
                 icon: CreditCard, 
                 title: 'Next-Gen Credit Cards', 
                 desc: 'Unlock exclusive rewards and premium benefits with our sleek, metal credit cards and virtual cards.',
-                features: ['3% Cash Back', 'Lounge Access', 'Virtual Protection']
+                features: ['3% Cash Back', 'Lounge Access', 'Virtual Protection'],
+                link: '/apply-credit-card'
               },
               { 
                 icon: PieChart, 
@@ -78,6 +80,12 @@ export default function Services() {
                     </div>
                   ))}
                 </div>
+                {service.link && (
+                  <Link to={service.link} className="mt-8 flex items-center justify-center gap-2 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-blue-600 transition-all group-hover:shadow-xl">
+                    Apply Now
+                    <ArrowRight size={16} />
+                  </Link>
+                )}
               </div>
             ))}
           </div>

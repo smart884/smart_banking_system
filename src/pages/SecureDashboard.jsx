@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/SecureAuthContext';
+import { useNavigate, Link } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { 
   Wallet, 
   ArrowUpRight, 
   ArrowDownLeft, 
+  AlertCircle,
   History, 
   User as UserIcon, 
   Send,
@@ -157,7 +159,16 @@ const MOCK_CONTACTS = [
 ];
 
 export default function SecureDashboard() {
-  const { userProfile, logout, addRequest, requests, userAccounts } = useAuth(); // Added userAccounts
+  const navigate = useNavigate();
+  const { 
+    userProfile, 
+    logout, 
+    addRequest, 
+    requests, 
+    userAccounts,
+    serviceRequests, // Added
+    cards // Added
+  } = useAuth();
   const [showBalance, setShowBalance] = useState(true);
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -174,13 +185,25 @@ export default function SecureDashboard() {
   const [ccPaymentStatus, setCcPaymentStatus] = useState(null); // 'success' or 'failure'
   const [loanStep, setLoanStep] = useState(1); // 1: Entry, 2: Success
   const [loanStatus, setLoanStatus] = useState(null); // 'success' or 'failure'
+  const [notification, setNotification] = useState(null);
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
   const userRequests = requests.filter(req => 
     req.userId === userProfile?.uid || 
     (!req.userId && req.userName === `${userProfile?.firstName} ${userProfile?.lastName}`)
   );
-  
+  useEffect(() => {
+    if (serviceRequests.length > 0) {
+      const latestRequest = serviceRequests[0];
+      if (latestRequest.status === 'S') {
+        setNotification(`Your ${latestRequest.type} has been Approved! ✅`);
+      } else if (latestRequest.status === 'R') {
+        setNotification(`Your ${latestRequest.type} has been Rejected. ❌`);
+      }
+      setTimeout(() => setNotification(null), 5000);
+    }
+  }, [serviceRequests]);
+
   // Helper to get Date object from various timestamp formats
   const getDateObject = (ts) => {
     if (!ts) return new Date();
@@ -508,6 +531,30 @@ export default function SecureDashboard() {
   const handleSubmit = (e) => {
     e.preventDefault();
     
+    // VALIDATION: Request Services
+    if (modal.type === 'request-services') {
+      if (formData.serviceType === 'credit-card') {
+        closeModal();
+        navigate('/apply-credit-card');
+        return;
+      }
+      if (formData.serviceType === 'debit-card') {
+        closeModal();
+        navigate('/apply-debit-card');
+        return;
+      }
+      if (formData.serviceType === 'loan') {
+        closeModal();
+        navigate('/apply-personal-loan');
+        return;
+      }
+      if (formData.serviceType === 'kyc') {
+        closeModal();
+        navigate('/apply-kyc');
+        return;
+      }
+    }
+
     // VALIDATION: New Account Request
     if (modal.type === 'new-account') {
       // Step 1 Validation: Account Selection
@@ -981,32 +1028,6 @@ export default function SecureDashboard() {
             )}
           </div>
         );
-      case 'cards':
-        return (
-          <div className="space-y-10">
-            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">My Cards</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[40px] p-10 h-[280px] shadow-2xl relative overflow-hidden flex flex-col justify-between">
-                <div className="absolute top-0 right-0 p-32 bg-blue-600/20 rounded-full blur-[80px] -mr-24 -mt-24"></div>
-                <div className="relative z-10 flex justify-between items-start text-white">
-                  <span className="text-[10px] font-black tracking-[0.3em] uppercase">SmartBank Black</span>
-                  <div className="w-12 h-8 bg-yellow-500/20 border border-yellow-500/30 rounded" />
-                </div>
-                <div className="relative z-10 text-white">
-                  <p className="text-xl font-mono tracking-[0.3em] mb-6">•••• •••• •••• 8842</p>
-                  <div className="flex justify-between items-end">
-                    <p className="text-sm font-bold uppercase tracking-widest">{userProfile?.firstName} {userProfile?.lastName}</p>
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/1280px-Mastercard-logo.svg.png" className="h-8 opacity-80" alt="Mastercard" />
-                  </div>
-                </div>
-              </div>
-              <button onClick={() => openModal('request-services', 'Request New Card')} className="border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center gap-4 hover:border-blue-400 hover:bg-blue-50 transition-all p-10">
-                <PlusCircle size={40} className="text-slate-300" />
-                <p className="font-black text-slate-400 uppercase tracking-widest">Add New Card</p>
-              </button>
-            </div>
-          </div>
-        );
       case 'payments':
         return (
           <div className="space-y-10">
@@ -1068,6 +1089,147 @@ export default function SecureDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        );
+      case 'cards':
+        return (
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">My Card Portfolio</h2>
+                <p className="text-slate-500 font-medium">Manage your active credit and debit cards.</p>
+              </div>
+              <button 
+                onClick={() => navigate('/apply-credit-card')} 
+                className="px-8 py-4 bg-blue-600 text-white rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-blue-700 transition-all shadow-2xl shadow-blue-600/20 flex items-center gap-3"
+              >
+                <PlusCircle size={20} /> Request New Card
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+              {cards.map((card, i) => (
+                <div key={card.id || i} className="group relative aspect-[1.58/1] rounded-[40px] overflow-hidden shadow-2xl transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2">
+                  <div className={`absolute inset-0 bg-gradient-to-br ${i % 2 === 0 ? 'from-slate-900 via-slate-800 to-slate-900' : 'from-blue-700 via-indigo-800 to-blue-900'} p-10 text-white flex flex-col justify-between`}>
+                    <div className="absolute top-0 right-0 p-32 bg-white/5 rounded-full blur-[80px] -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000"></div>
+                    
+                    <div className="relative z-10 flex justify-between items-start">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">SmartBank {card.cardType} {card.category !== 'Credit' ? card.category : ''}</p>
+                        <h4 className="text-xl font-bold tracking-tight">{card.cardType === 'Debit' ? 'Instant Access' : 'Premium Signature'}</h4>
+                      </div>
+                      <div className="w-14 h-10 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-white/20 -mr-3" />
+                        <div className="w-8 h-8 rounded-full bg-white/20" />
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 space-y-2">
+                      <p className="text-2xl xl:text-3xl font-mono tracking-[0.2em] font-black text-white/90">
+                        {card.cardNumber.replace(/\d(?=\d{4})/g, "•")}
+                      </p>
+                      <div className="flex gap-8">
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">Expiry</p>
+                          <p className="text-sm font-bold">{card.expiry}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">CVV</p>
+                          <p className="text-sm font-bold">***</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 flex justify-between items-end">
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">Card Holder</p>
+                        <p className="text-sm font-black uppercase tracking-widest">{card.userName}</p>
+                      </div>
+                      <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20">
+                        <p className="text-[8px] font-black uppercase tracking-widest text-white/40 leading-none mb-1">Limit</p>
+                        <p className="text-xs font-black">₹{parseFloat(card.limit).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {cards.length === 0 && (
+                <div className="lg:col-span-2 xl:col-span-3 py-32 text-center bg-white rounded-[48px] border-2 border-dashed border-slate-100">
+                  <div className="w-24 h-24 bg-slate-50 text-slate-300 rounded-[32px] flex items-center justify-center mx-auto mb-8">
+                    <CardIcon size={48} />
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 mb-4">No Active Cards Found</h3>
+                  <p className="text-slate-500 font-medium mb-10 max-w-md mx-auto">You haven't applied for any credit or debit cards yet. Request one now to unlock premium benefits.</p>
+                  <button 
+                    onClick={() => navigate('/apply-credit-card')} 
+                    className="px-10 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl"
+                  >
+                    Request New Card
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Request Status Section */}
+            {serviceRequests.length > 0 && (
+              <div className="space-y-8 pt-12 border-t border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-4">
+                  <History className="text-blue-600" /> Recent Card Requests
+                </h3>
+                <div className="bg-white rounded-[40px] border border-slate-50 shadow-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-50">
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Protocol Type</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Date</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Status</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Operational Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {serviceRequests.map((req) => (
+                        <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-10 py-8 font-black text-slate-900">{req.type}</td>
+                          <td className="px-10 py-8 text-sm font-medium text-slate-500">{new Date(req.createdAt).toLocaleDateString()}</td>
+                          <td className="px-10 py-8">
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-full border ${
+                              req.status === 'P' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                              req.status === 'I' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                              req.status === 'S' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                              'bg-rose-50 text-rose-600 border-rose-100'
+                            }`}>
+                              {req.status === 'P' ? 'Pending (P)' : 
+                               req.status === 'I' ? 'In Progress (I)' : 
+                               req.status === 'S' ? 'Solved (S)' : 'Rejected (R)'}
+                            </span>
+                          </td>
+                          <td className="px-10 py-8 text-right">
+                            {req.status === 'S' ? (
+                              <span className="text-emerald-600 font-bold">Approval Granted ✅</span>
+                            ) : req.status === 'R' ? (
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="text-rose-600 font-bold">Request Declined ❌</span>
+                                {req.type === 'KYC Update' && (
+                                  <button 
+                                    onClick={() => navigate('/apply-kyc')}
+                                    className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                                  >
+                                    Re-submit Documents
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-600 font-bold">In Review Terminal 🔄</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         );
       case 'history':
@@ -1149,6 +1311,15 @@ export default function SecureDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
+      {notification && (
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-500">
+          <div className={`${notification.includes('Approved') ? 'bg-emerald-600' : 'bg-rose-600'} text-white px-10 py-5 rounded-[24px] shadow-2xl flex items-center gap-4 border border-white/10 backdrop-blur-xl`}>
+            {notification.includes('Approved') ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+            <p className="font-black text-sm uppercase tracking-widest">{notification}</p>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-500">
@@ -2481,7 +2652,7 @@ export default function SecureDashboard() {
                           Processing...
                         </div>
                       ) : (
-                        <>Submit {modal.title} Request <ArrowRight size={22} /></>
+                        <>{(formData.serviceType === 'credit-card' || formData.serviceType === 'debit-card' || formData.serviceType === 'loan' || formData.serviceType === 'kyc') ? 'Apply Now' : `Submit ${modal.title} Request`} <ArrowRight size={22} /></>
                       )}
                     </button>
                     <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>

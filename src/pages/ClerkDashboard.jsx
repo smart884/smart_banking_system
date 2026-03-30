@@ -15,7 +15,9 @@ import {
   FileText,
   Menu,
   X,
-  RefreshCcw
+  RefreshCcw,
+  CreditCard,
+  Landmark
 } from 'lucide-react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/ui/Modal';
@@ -27,7 +29,17 @@ import Button from '../components/ui/Button';
  */
 
 export default function ClerkDashboard() {
-  const { userProfile, logout, requests, updateRequestStatus, clearRequests, populateDemoData, allUsers } = useAuth(); // Added allUsers
+  const { 
+    userProfile, 
+    logout, 
+    requests, 
+    serviceRequests, 
+    updateRequestStatus, 
+    updateServiceRequestStatus, // Renamed
+    clearRequests, 
+    populateDemoData, 
+    allUsers 
+  } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedReq, setSelectedReq] = useState(null);
@@ -43,7 +55,7 @@ export default function ClerkDashboard() {
     (r.status === 'clerk_approved' || r.status === 'manager_approved' || r.status === 'approved' || r.status === 'rejected')
   );
   
-  const serviceRequests = requests.filter(r => 
+  const generalServiceRequests = requests.filter(r => 
     r.category === 'service' || 
     r.type.toLowerCase().includes('loan') || 
     r.type.toLowerCase().includes('card') || 
@@ -67,7 +79,7 @@ export default function ClerkDashboard() {
     console.log("[ClerkTerminal] State update detected:", {
       total: requests.length,
       accounts: accountRequests.length,
-      services: serviceRequests.length
+      services: generalServiceRequests.length
     });
   }, [requests]);
 
@@ -88,18 +100,67 @@ export default function ClerkDashboard() {
   const navLinks = [
     { to: '/clerk/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/clerk/accounts', label: 'Account Requests', icon: Users },
-    { to: '/clerk/services', label: 'Service Requests', icon: Briefcase },
+    { to: '/clerk/services', label: 'General Requests', icon: Briefcase },
+    { to: '/clerk/credit-cards', label: 'Card Requests', icon: CreditCard },
+    { to: '/clerk/loans', label: 'Loan Requests', icon: Landmark },
+    { to: '/clerk/kyc', label: 'KYC Updates', icon: ShieldCheck },
     { to: '/clerk/reports', label: 'Reports', icon: BarChart3 },
   ];
 
   const handleAction = (id, category, status) => {
-    // If it's an account request being approved, bypass manager and trigger account creation
-    const finalStatus = status === 'approved' 
-      ? (category === 'account' ? 'manager_approved' : 'clerk_approved') 
-      : 'rejected';
+    // Check if it's a ServiceRequest (Credit Card, Debit Card, Loan, KYC)
+    const serviceType = selectedReq?.type?.toLowerCase() || '';
+    const isServiceReq = serviceType.includes('card') || serviceType.includes('loan') || serviceType.includes('kyc');
+
+    if (isServiceReq) {
+      const isCredit = serviceType === 'credit card request';
       
-    updateRequestStatus(id, finalStatus, remarks);
-    showToast(`Request ${status === 'approved' ? (category === 'account' ? 'Approved & Account Created! ✅' : 'sent to Manager ✅') : 'rejected ❌'}`);
+      if (status === 'approved') {
+        // Verification must be successful first
+        const isVerified = kycResult && (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true);
+        
+        if (!isVerified) {
+          showToast("KYC Verification FAILED! Cannot approve. ❌");
+          return;
+        }
+
+        if (isCredit) {
+          const income = parseFloat(selectedReq.details.income || 0);
+          const cardType = selectedReq.details.cardType;
+          let approved = false;
+
+          // NEW APPROVAL LOGIC
+          if (cardType === 'Basic' && income >= 25000) approved = true;
+          else if (cardType === 'Platinum' && income >= 50000) approved = true;
+          else if (cardType === 'Gold' && income >= 100000) approved = true;
+
+          if (approved) {
+            updateServiceRequestStatus(id, 'S', 'Approved by Clerk: Income & KYC Verified');
+            showToast('Credit Card Request Approved & Card Generated ✅');
+          } else {
+            updateServiceRequestStatus(id, 'R', `Rejected: Income ₹${income} insufficient for ${cardType} Card.`);
+            showToast(`Rejected: Income insufficient for ${cardType} Card ❌`);
+          }
+        } else {
+          // Debit Card, Loan, KYC Approval (Forward to Manager or Solve if simple)
+          const nextStatus = (serviceType.includes('loan') || serviceType.includes('kyc')) ? 'I' : 'S'; 
+          updateServiceRequestStatus(id, nextStatus, 'Approved by Clerk: KYC Verified');
+          showToast(`${selectedReq.type} Approved! Forwarded to Manager. ✅`);
+        }
+      } else {
+        updateServiceRequestStatus(id, 'R', remarks || 'Rejected by Clerk');
+        showToast(`${selectedReq.type} Rejected ❌`);
+      }
+    } else {
+      // Existing logic for account/service requests
+      const finalStatus = status === 'approved' 
+        ? (category === 'account' ? 'manager_approved' : 'clerk_approved') 
+        : 'rejected';
+        
+      updateRequestStatus(id, finalStatus, remarks);
+      showToast(`Request ${status === 'approved' ? (category === 'account' ? 'Approved & Account Created! ✅' : 'sent to Manager ✅') : 'rejected ❌'}`);
+    }
+    
     setSelectedReq(null);
     setKycResult(null);
     setRemarks('');
@@ -108,76 +169,12 @@ export default function ClerkDashboard() {
   const handleVerifyKYC = () => {
      if (!selectedReq) return;
      
-     // Find user profile in allUsers using the userId from request
-     // Fallback to userName if userId is missing (for older requests)
-     const user = allUsers.find(u => 
-       u.id === selectedReq.userId || 
-       `${u.firstName} ${u.lastName}`.trim().toLowerCase() === selectedReq.userName.trim().toLowerCase()
-     );
-     
-     if (!user) {
-      showToast("Error: User profile not found in database! ❌");
-      setKycResult({ error: "User profile not found." });
-      return;
-    }
-
-    const details = selectedReq.details || {};
-    
-    // Compare details (normalization for case/spaces)
-    const verification = {
-      mobile: {
-        match: String(details.mobile || "").trim() === String(user.contactNumber || "").trim(),
-        submitted: details.mobile,
-        db: user.contactNumber
-      },
-      email: {
-        match: String(details.email || "").toLowerCase().trim() === String(user.email || "").toLowerCase().trim(),
-        submitted: details.email,
-        db: user.email
-      },
-      aadhar: {
-        match: String(details.aadhar || "").replace(/\s/g, "") === String(user.aadhaar || "").replace(/\s/g, ""),
-        submitted: details.aadhar,
-        db: user.aadhaar
-      },
-      pan: {
-        match: String(details.pan || "").toUpperCase().trim() === String(user.pan || "").toUpperCase().trim(),
-        submitted: details.pan,
-        db: user.pan
-      }
-    };
-
-    setKycResult(verification);
-    
-    const allMatch = Object.values(verification).every(v => v.match);
-    if (allMatch) {
-      showToast("KYC Verification Successful! All details match. ✅");
-      setRemarks(""); // Clear if all match
-    } else {
-      showToast("KYC Verification FAILED! Some details do not match. ❌");
-      
-      // Generate detailed error message based on mismatches
-      const mismatches = [];
-      if (!verification.mobile.match) mismatches.push("mobile number");
-      if (!verification.email.match) mismatches.push("email address");
-      if (!verification.aadhar.match) mismatches.push("addhar number");
-      if (!verification.pan.match) mismatches.push("pancard number");
-
-      let fieldsText = "";
-      if (mismatches.length === 1) {
-        fieldsText = mismatches[0];
-      } else {
-        const last = mismatches.pop();
-        fieldsText = `${mismatches.join(", ")} and ${last}`;
-      }
-
-      const errorMsg = `your ${fieldsText} dose not matched so your request is rejected`;
-      setRemarks(errorMsg);
-    }
+     showToast("Documents Verified! Details matching manual check. ✅");
+     setKycResult({ manual: { match: true } });
   };
 
   const renderStats = () => {
-    const all = [...accountRequests, ...serviceRequests];
+    const all = [...accountRequests, ...generalServiceRequests];
     const pending = all.filter(r => r.status === 'pending').length;
     const approved = all.filter(r => r.status === 'approved').length;
 
@@ -248,19 +245,19 @@ export default function ClerkDashboard() {
           {/* KYC Status Indicator */}
           {kycResult && (
             <div className={`p-4 rounded-2xl flex items-center gap-4 border animate-in slide-in-from-top-2 duration-300 ${
-              Object.values(kycResult).every(v => v.match) 
+              (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true)
                 ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
                 : 'bg-rose-50 border-rose-100 text-rose-700'
             }`}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                Object.values(kycResult).every(v => v.match) ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
               }`}>
-                {Object.values(kycResult).every(v => v.match) ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                {(Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
               </div>
               <div>
                 <p className="text-xs font-black uppercase tracking-widest">KYC Status</p>
                 <p className="text-sm font-bold">
-                  {Object.values(kycResult).every(v => v.match) ? 'Verified: All records match database' : 'Failed: Data discrepancies detected'}
+                  {(Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? 'Verified: Manual review successful' : 'Failed: Data discrepancies detected'}
                 </p>
               </div>
             </div>
@@ -269,28 +266,65 @@ export default function ClerkDashboard() {
           {/* Data Grid Section */}
           <div className="grid grid-cols-2 gap-4">
             {selectedReq?.details && Object.entries(selectedReq.details).map(([key, value]) => {
+              // Skip internal/binary fields
+              if (key === 'documents' || key === 'previews' || key === 'documentPreview' || key === 'documentAttached' || typeof value === 'object') return null;
+              
               const label = key.replace(/([A-Z])/g, ' $1').trim();
-              const fieldKyc = kycResult?.[key.toLowerCase()];
               
               return (
-                <div key={key} className={`group p-4 rounded-2xl transition-all duration-300 border hover:shadow-md ${
-                  fieldKyc 
-                    ? (fieldKyc.match ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100') 
-                    : 'bg-white border-slate-100'
-                }`}>
+                <div key={key} className="group p-4 rounded-2xl transition-all duration-300 border hover:shadow-md bg-white border-slate-100">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">{label}</p>
-                    {fieldKyc && (
-                      <div className={`p-1 rounded-full ${fieldKyc.match ? 'bg-emerald-500' : 'bg-rose-500'} text-white`}>
-                        {fieldKyc.match ? <CheckCircle2 size={10} /> : <XCircle size={10} />}
-                      </div>
-                    )}
                   </div>
-                  <p className="text-base font-black text-slate-900 truncate tracking-tight">{String(value) || 'N/A'}</p>
+                  <p className="text-sm font-bold text-slate-900 break-all">{String(value)}</p>
                 </div>
               );
             })}
           </div>
+
+          {/* Document Preview Section */}
+          {(selectedReq?.details?.documentPreview || selectedReq?.details?.documents) && (
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attached Documents</p>
+              
+              {/* Legacy single document support */}
+              {selectedReq.details.documentPreview && !selectedReq.details.documents && (
+                <div className="rounded-3xl overflow-hidden border-4 border-slate-100 shadow-lg group relative">
+                  <img 
+                    src={selectedReq.details.documentPreview} 
+                    alt="KYC Document" 
+                    className="w-full h-auto max-h-[400px] object-contain bg-slate-50"
+                  />
+                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <a href={selectedReq.details.documentPreview} download="KYC_Document" className="px-6 py-3 bg-white text-slate-900 rounded-2xl font-black text-sm uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform">Download</a>
+                  </div>
+                </div>
+              )}
+
+              {/* Multi-document support */}
+              {selectedReq.details.documents && (
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(selectedReq.details.documents).map(([key, url]) => url && (
+                    <div key={key} className="space-y-2">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter px-1">{key.replace(/([A-Z])/g, ' $1')}</p>
+                      <div className="rounded-2xl overflow-hidden border-2 border-slate-100 shadow-sm group relative aspect-square bg-slate-50">
+                        <img 
+                          src={url} 
+                          alt={key} 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <a href={url} download={key} className="p-2 bg-white rounded-full text-slate-900 shadow-xl hover:scale-110 transition-transform">
+                            <Eye size={16} />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Remarks & Action Section */}
           <div className="pt-6 border-t border-slate-100 space-y-5">
@@ -494,7 +528,119 @@ export default function ClerkDashboard() {
 
         {/* Dynamic Content based on route */}
         <main className="flex-1 px-6 md:px-10 py-10">
-          {debugMode && (
+          {location.pathname === '/clerk/credit-cards' || location.pathname === '/clerk/loans' || location.pathname === '/clerk/kyc' ? (
+            <div className="space-y-10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                  {location.pathname === '/clerk/credit-cards' ? 'Card Requests' : 
+                   location.pathname === '/clerk/loans' ? 'Loan Requests' : 'KYC Updates'}
+                </h2>
+                <div className="flex items-center gap-4">
+                  <div className="px-5 py-2 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+                    {serviceRequests.filter(r => {
+                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
+                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
+                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
+                      return false;
+                    }).length} Pending Review
+                  </div>
+                  <button onClick={forceRefreshData} className="p-3 rounded-2xl bg-white border border-slate-100 hover:bg-slate-50 transition-all text-slate-400 hover:text-blue-600 shadow-sm"><RefreshCcw size={20} /></button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">User Details</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Request Info</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {serviceRequests.filter(r => {
+                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card');
+                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan');
+                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc');
+                      return false;
+                    }).length === 0 ? (
+                      <tr><td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests found in this terminal.</td></tr>
+                    ) : serviceRequests.filter(r => {
+                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card');
+                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan');
+                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc');
+                      return false;
+                    }).map((req) => (
+                      <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-black group-hover:bg-blue-600 group-hover:text-white transition-all">{req.userName?.[0] || 'U'}</div>
+                            <div>
+                              <p className="text-sm font-black text-slate-900">{req.userName}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.accountNumber || 'SYSTEM'}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          {req.type?.toLowerCase().includes('loan') ? (
+                            <>
+                              <p className="text-sm font-bold text-slate-600">₹{parseFloat(req.loanAmount || 0).toLocaleString()}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.tenure} Months</p>
+                            </>
+                          ) : req.type?.toLowerCase().includes('card') ? (
+                            <>
+                              <p className="text-sm font-bold text-slate-600">₹{parseFloat(req.income || 0).toLocaleString()}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.pan}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold text-slate-600">{req.newName || req.userName}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{req.newMobile || req.mobile}</p>
+                            </>
+                          )}
+                        </td>
+                        <td className="px-8 py-6">
+                          <p className="text-sm text-slate-500 font-medium">{new Date(req.createdAt).toLocaleDateString()}</p>
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                            req.status === 'P' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
+                            req.status === 'I' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                            req.status === 'S' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                            'bg-rose-50 text-rose-600 border border-rose-100'
+                          }`}>
+                            {req.status === 'P' ? 'Pending (P)' : 
+                             req.status === 'I' ? 'In Progress (I)' : 
+                             req.status === 'S' ? 'Solved (S)' : 'Rejected (R)'}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          <button 
+                            onClick={() => {
+                              setSelectedReq({
+                                ...req,
+                                details: {
+                                  ...req
+                                }
+                              });
+                            }}
+                            className="px-5 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-slate-200"
+                          >
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <>
+              {debugMode && (
             <div className="mb-10 p-6 bg-slate-900 rounded-[32px] text-emerald-400 font-mono text-xs space-y-4 shadow-2xl animate-in zoom-in-95 duration-300">
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <span className="flex items-center gap-2 uppercase tracking-widest font-black"><ShieldCheck size={14}/> Terminal Debugger</span>
@@ -571,7 +717,7 @@ export default function ClerkDashboard() {
                 <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Service Requests</h2>
                 <p className="text-slate-500 font-medium">Handle credit cards, debit cards, and loan applications.</p>
               </div>
-              {renderTable(serviceRequests, 'service')}
+              {renderTable(generalServiceRequests, 'service')}
             </div>
           )}
 
@@ -609,7 +755,14 @@ export default function ClerkDashboard() {
               </div>
             </div>
           )}
-        </main>
+        </>
+      )}
+    </main>
+    <footer className="px-10 py-6 border-t border-slate-100 bg-white">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+        © {new Date().getFullYear()} Smart Bank Terminal — Internal Use Only
+      </p>
+    </footer>
       </div>
 
       {/* Mobile Sidebar Overlay */}

@@ -9,6 +9,10 @@ import Services from './pages/Services';
 import Contact from './pages/Contact';
 import Login from './pages/Login';
 import Registration from './pages/Registration';
+import ApplyCreditCard from './pages/ApplyCreditCard';
+import ApplyDebitCard from './pages/ApplyDebitCard';
+import ApplyPersonalLoan from './pages/ApplyPersonalLoan';
+import ApplyKYC from './pages/ApplyKYC';
 import PendingStatus from './pages/PendingStatus';
 import SecureDashboard from './pages/SecureDashboard';
 import ClerkDashboard from './pages/ClerkDashboard';
@@ -62,6 +66,28 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Registration />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
+
+        {/* Credit Card Application */}
+        <Route path="/apply-credit-card" element={
+          <ProtectedRoute roles={['customer']}>
+            <ApplyCreditCard />
+          </ProtectedRoute>
+        } />
+        <Route path="/apply-debit-card" element={
+          <ProtectedRoute roles={['customer']}>
+            <ApplyDebitCard />
+          </ProtectedRoute>
+        } />
+        <Route path="/apply-personal-loan" element={
+          <ProtectedRoute roles={['customer']}>
+            <ApplyPersonalLoan />
+          </ProtectedRoute>
+        } />
+        <Route path="/apply-kyc" element={
+          <ProtectedRoute roles={['customer']}>
+            <ApplyKYC />
+          </ProtectedRoute>
+        } />
 
         {/* Protected Dashboard Routes */}
         <Route path="/user/dashboard" element={

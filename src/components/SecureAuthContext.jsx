@@ -7,6 +7,7 @@ import {
   updateDoc, 
   doc, 
   getDoc,
+  getDocs,
   query, 
   where,
   orderBy, 
@@ -40,6 +41,8 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [requests, setRequests] = useState([]);
+  const [serviceRequests, setServiceRequests] = useState([]); // Added for ServiceRequest_tbl
+  const [cards, setCards] = useState([]); // Added for Card_tbl
   const [allUsers, setAllUsers] = useState([]);
   const [systemSettings, setSystemSettings] = useState(null);
   const [userAccounts, setUserAccounts] = useState([]);
@@ -101,6 +104,9 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
+    // Initialize ServiceMaster
+    initializeServiceMaster();
+
     return () => {
       unsubscribeAuth();
       unsubscribeUsers();
@@ -119,10 +125,16 @@ export const AuthProvider = ({ children }) => {
     let q;
 
     // If not an admin/clerk/manager, only show their own requests
-    const role = userProfile?.role?.toLowerCase();
+    const rawRole = userProfile?.role || userProfile?.userType || 'customer';
+    const role = rawRole.toLowerCase();
+    
+    // Check if staff
+    const isStaff = role === 'clerk' || role === 'manager' || role === 'admin' || 
+                   role === 'bank officer' || role === 'regional manager';
+
     const fullName = `${userProfile?.firstName} ${userProfile?.lastName}`.trim();
 
-    if (role === 'clerk' || role === 'manager' || role === 'admin') {
+    if (isStaff) {
       q = query(requestsRef, orderBy('createdAt', 'desc'));
     } else {
       // NOTE: We don't use 'or' query here to maintain compatibility with basic Firestore setups
@@ -136,7 +148,7 @@ export const AuthProvider = ({ children }) => {
         const data = doc.data();
         
         // PRIVACY FILTER: If not staff, only allow their own records
-        if (role !== 'clerk' && role !== 'manager' && role !== 'admin') {
+        if (!isStaff) {
           const isOwner = (data.userId === userProfile.uid) || (data.userName === fullName);
           if (!isOwner) return;
         }
@@ -158,7 +170,41 @@ export const AuthProvider = ({ children }) => {
       console.log(`[Firebase] Synced ${fetchedRequests.length} requests for ${role || 'user'} ${userProfile.uid} 🔥`);
     });
 
-    return () => unsubscribe();
+    // Listen for ServiceRequest_tbl (Credit Card Requests)
+    const serviceRequestsRef = collection(db, 'ServiceRequest_tbl');
+    const unsubscribeService = onSnapshot(
+      query(serviceRequestsRef, orderBy('createdAt', 'desc')), 
+      (snapshot) => {
+        const fetched = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          // PRIVACY FILTER: If not staff, only allow their own records
+          if (!isStaff) {
+            if (data.userId !== userProfile.uid) return;
+          }
+          fetched.push({ id: doc.id, ...data, createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString() });
+        });
+        setServiceRequests(fetched);
+        console.log(`[Firebase] Synced ${fetched.length} service requests for role: ${role} 🔥`);
+      },
+      (error) => {
+        console.error("[Firebase] ServiceRequest listener failed:", error);
+      }
+    );
+
+    // Listen for Card_tbl (Approved Cards)
+    const cardsRef = collection(db, 'Card_tbl');
+    const unsubscribeCards = onSnapshot(query(cardsRef, where('userId', '==', userProfile.uid)), (snapshot) => {
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCards(fetched);
+      console.log(`[Firebase] Synced ${fetched.length} cards for user ${userProfile.uid} 🔥`);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeService();
+      unsubscribeCards();
+    };
   }, [userProfile?.uid, userProfile?.role]);
 
   // Listen for current user's accounts
@@ -246,16 +292,178 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const addCreditCardRequest = async (req) => {
+    try {
+      console.log("[Firebase] Saving Credit Card request...");
+      await addDoc(collection(db, 'ServiceRequest_tbl'), {
+        ...req,
+        status: 'P', // Pending
+        userId: userProfile?.uid,
+        createdAt: serverTimestamp()
+      });
+      console.log(`[Firebase] Credit Card request saved successfully! ✅`);
+      return { success: true };
+    } catch (err) {
+      console.error("[Firebase] Error adding Credit Card request:", err);
+      throw err; // Re-throw so the UI can handle it
+    }
+  };
+
+  const updateServiceRequestStatus = async (id, status, remarks = '') => {
+    try {
+      const docRef = doc(db, 'ServiceRequest_tbl', id);
+      const updateData = { status };
+      
+      const rawRole = userProfile?.role || userProfile?.userType || 'customer';
+      const role = rawRole.toLowerCase();
+      
+      if (role === 'clerk' || role === 'bank officer') {
+        updateData.clerkRemark = remarks;
+      } else if (role === 'manager' || role === 'regional manager') {
+        updateData.managerRemark = remarks;
+      }
+
+      await updateDoc(docRef, updateData);
+      console.log(`[Firebase] ServiceRequest status updated: ${id} -> ${status} 🔥`);
+
+      // Special Logic for specific service types if needed
+      if (status === 'S') { // Solved / Approved
+        const reqDoc = await getDoc(docRef);
+        if (reqDoc.exists()) {
+          const data = reqDoc.data();
+          
+          // 1. Generate card if it's a card request
+          if (data.type?.toLowerCase()?.includes('card')) {
+            await generateCreditCard(data);
+          }
+          
+          // 2. Update User Profile if it's a KYC Update
+          if (data.type === 'KYC Update' || data.type === 'KYC Document Update') {
+            await updateUserProfileFromKYC(data);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[Firebase] ServiceRequest update failed:", err);
+    }
+  };
+
+  const updateUserProfileFromKYC = async (request) => {
+    try {
+      // Find user document in 'users' collection by uid
+      const q = query(collection(db, 'users'), where('uid', '==', request.userId));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        const userRef = doc(db, 'users', userDoc.id);
+        
+        // Update user profile with new details from KYC request
+        // Handling both old and new field formats for compatibility
+        const updatePayload = {
+          contactNumber: request.newMobile || request.mobile || userDoc.data().contactNumber,
+          email: request.newEmail || request.email || userDoc.data().email,
+          address: request.newAddress || request.address || userDoc.data().address,
+          firstName: request.newName ? request.newName.split(' ')[0] : userDoc.data().firstName,
+          lastName: request.newName ? request.newName.split(' ').slice(1).join(' ') : userDoc.data().lastName,
+          kycStatus: 'Verified',
+          lastKycUpdate: serverTimestamp()
+        };
+        
+        await updateDoc(userRef, updatePayload);
+        console.log(`[Compliance] User profile updated for ${request.userId} from KYC Request ✅`);
+      }
+    } catch (err) {
+      console.error("[Compliance] User profile update failed:", err);
+    }
+  };
+
+  const generateCreditCard = async (request) => {
+    try {
+      const isDebit = request.type === 'Debit Card Request';
+      
+      // 16-digit card number (4 groups of 4)
+      const cardNumber = Array.from({ length: 4 }, () => 
+        Math.floor(1000 + Math.random() * 9000)).join(' ');
+      
+      // 3-digit CVV
+      const cvv = Math.floor(100 + Math.random() * 900).toString();
+      
+      // Expiry (3 years from now)
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 3);
+      const expiry = `${(expiryDate.getMonth() + 1).toString().padStart(2, '0')}/${expiryDate.getFullYear().toString().slice(-2)}`;
+
+      // Credit limit based on card type
+      let limit = 0;
+      if (!isDebit) {
+        limit = 50000; // Default to Basic
+        if (request.cardType === 'Platinum') limit = 100000;
+        if (request.cardType === 'Gold') limit = 150000;
+      }
+
+      const cardData = {
+        userId: request.userId,
+        userName: request.fullName || 'User',
+        cardNumber,
+        cvv,
+        expiry,
+        limit,
+        cardType: isDebit ? 'Debit' : 'Credit',
+        category: isDebit ? request.cardType : 'Credit', // Classic or Platinum for Debit
+        accountNumber: request.accountNumber || '',
+        status: 'Active',
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'Card_tbl'), cardData);
+      console.log(`[Banking] New ${isDebit ? 'Debit' : 'Credit'} Card generated for ${request.userId} ✅`);
+    } catch (err) {
+      console.error("[Banking] Card generation failed:", err);
+    }
+  };
+
+  const initializeServiceMaster = async () => {
+    try {
+      const services = [
+        { name: 'Credit Card Request', desc: 'Apply for a new credit card based on your monthly income.' },
+        { name: 'Debit Card Request', desc: 'Apply for a new debit card for instant access.' },
+        { name: 'Personal Loan Request', desc: 'Apply for a personal loan with flexible tenure.' },
+        { name: 'KYC Update', desc: 'Update your identification documents and personal records.' }
+      ];
+
+      for (const service of services) {
+        const q = query(collection(db, 'ServiceMaster_tbl'), where('name', '==', service.name));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+          await addDoc(collection(db, 'ServiceMaster_tbl'), {
+            name: service.name,
+            description: service.desc,
+            category: 'service',
+            status: 'Active',
+            createdAt: serverTimestamp()
+          });
+          console.log(`[Firebase] ServiceMaster initialized with ${service.name} ✅`);
+        }
+      }
+    } catch (err) {
+      console.error("[Firebase] Error initializing ServiceMaster:", err);
+    }
+  };
+
   const updateRequestStatus = async (id, status, remarks = '') => {
     try {
       const docRef = doc(db, 'user_requests', id);
       const updateData = { status };
       
       // Add remarks based on role (Case-insensitive)
-      const role = userProfile?.role?.toLowerCase();
-      if (role === 'clerk') {
+      const rawRole = userProfile?.role || userProfile?.userType || 'customer';
+      const role = rawRole.toLowerCase();
+      
+      if (role === 'clerk' || role === 'bank officer') {
         updateData.clerkRemark = remarks;
-      } else if (role === 'manager') {
+      } else if (role === 'manager' || role === 'regional manager') {
         updateData.managerRemark = remarks;
       }
 
@@ -310,9 +518,14 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     requests,
+    serviceRequests,
+    cards,
     userAccounts,
-    addRequest,
-    updateRequestStatus,
+    addRequest, 
+        addCreditCardRequest,
+        updateRequestStatus,
+        updateServiceRequestStatus,
+        initializeServiceMaster,
     allUsers,
     systemSettings,
     updateSystemSettings: async (newSettings) => {
@@ -349,7 +562,7 @@ export const AuthProvider = ({ children }) => {
         console.error("Failed to delete user:", err);
       }
     },
-    forceSync: () => {}, // Handled by onSnapshot
+    forceSync: () => {},
     clearRequests: () => {
       console.warn("Bulk clear not allowed on Firestore via client.");
     },

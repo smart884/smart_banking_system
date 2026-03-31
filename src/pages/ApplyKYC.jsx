@@ -20,6 +20,8 @@ export default function ApplyKYC() {
     currentEmail: '',
     currentMobile: '',
     currentAddress: '',
+    currentAadhaar: '',
+    currentPan: '',
 
     // Update Details
     newName: '',
@@ -53,6 +55,8 @@ export default function ApplyKYC() {
       const email = userProfile.email || '';
       const mobile = userProfile.contactNumber || userProfile.mobile || '';
       const address = userProfile.address || userProfile.address1 || '';
+      const aadhaar = userProfile.aadhaar || '';
+      const pan = userProfile.pan || '';
 
       setFormData(prev => ({
         ...prev,
@@ -60,6 +64,8 @@ export default function ApplyKYC() {
         currentEmail: email || 'Not Set',
         currentMobile: mobile || 'Not Set',
         currentAddress: address || 'Not Set',
+        currentAadhaar: aadhaar || 'Not Set',
+        currentPan: pan || 'Not Set',
         // Only set new fields if they are currently empty to avoid overwriting user input
         newName: prev.newName || fullName,
         newEmail: prev.newEmail || email,
@@ -210,6 +216,14 @@ export default function ApplyKYC() {
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Address</label>
                       <Input value={formData.currentAddress} readOnly className="bg-slate-50 border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Aadhaar</label>
+                      <Input value={formData.currentAadhaar} readOnly className="bg-slate-50 border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current PAN</label>
+                      <Input value={formData.currentPan} readOnly className="bg-slate-50 border-slate-200" />
                     </div>
                   </div>
                 </div>

@@ -87,7 +87,10 @@ export default function ManagerDashboard() {
         return false;
       })
     : [
-        ...requests.filter(r => (activeTab === 'dashboard' && r.status === 'clerk_approved') || (activeTab === 'requests')),
+        ...requests.filter(r => 
+          r.category !== 'payment' && 
+          ((activeTab === 'dashboard' && r.status === 'clerk_approved') || (activeTab === 'requests'))
+        ),
         ...serviceRequests.filter(r => (activeTab === 'dashboard' && r.status === 'I'))
       ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 

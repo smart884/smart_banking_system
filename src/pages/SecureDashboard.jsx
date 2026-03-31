@@ -177,6 +177,7 @@ export default function SecureDashboard() {
     fetchLoanById,
     payLoanEMI,
     performTransfer,
+    performPayment,
     fetchCardByNumber,
     allUsers
   } = useAuth();
@@ -804,22 +805,16 @@ export default function SecureDashboard() {
             if (!result.success) throw new Error(result.message);
             setTransferSuccess(true);
           } else {
-            // Record a transaction for bill payments too!
-            const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
-            
-            // We use the same performTransfer logic but to a system "BILLING" account or just record it as a debit
-            // For now, let's just ensure it's recorded in the transactions collection so it shows up in history/stats
-            await addDoc(collection(db, 'transactions'), {
-              userId: userProfile.uid,
-              userName,
+            // Use the new performPayment helper to debit the account and record the transaction
+            const result = await performPayment({
+              fromAccountNumber: formData.fromAccount,
+              amount: parseFloat(formData.amount),
               type: 'Payment',
-              category: 'Debit',
-              amount: -parseFloat(formData.amount),
-              fromAccount: formData.fromAccount,
-              toAccount: formData.billCategory || 'System',
-              remark: `${modal.title}: ${formData.billCategory || 'Bill'}`,
-              timestamp: serverTimestamp()
+              remark: `${modal.title} (${formData.fromAccount}): ${formData.billCategory || 'Bill'}`,
+              billCategory: formData.billCategory || 'System'
             });
+
+            if (!result.success) throw new Error(result.message);
 
             // Still add to user_requests for the "approved" status in the request list
             await addRequest({
@@ -2616,27 +2611,45 @@ export default function SecureDashboard() {
                       setFormError('');
                       setSubmitting(true);
                       
-                      // Process payment (mock for now, but could be a real transaction)
-                      setTimeout(() => {
-                        setSubmitting(false);
-                        setCcPaymentStatus('success');
-                        setCcStep(2);
-                        // Add request to history
-                        const userName = `${userProfile?.firstName || 'User'} ${userProfile?.lastName || ''}`.trim();
-                        addRequest({
-                          userId: userProfile?.uid,
-                          userName,
-                          type: 'Credit Card Bill Payment',
-                          category: 'payment',
-                          details: {
-                            ...formData,
-                            bankName: 'SmartBank',
-                            billCategory: 'credit-card',
-                            cardType: fetchedCard.cardType
-                          },
-                          status: 'approved'
-                        });
-                      }, 2000);
+                      // Process payment via the performPayment helper
+                      const processCCPayment = async () => {
+                        try {
+                          const result = await performPayment({
+                            fromAccountNumber: formData.fromAccount,
+                            amount: parseFloat(formData.amount),
+                            type: 'Credit Card Payment',
+                            remark: `Credit Card Bill: ${formData.refNum}`,
+                            billCategory: 'credit-card'
+                          });
+
+                          if (!result.success) throw new Error(result.message);
+
+                          setCcPaymentStatus('success');
+                          setCcStep(2);
+
+                          // Add request to history
+                          const userName = `${userProfile?.firstName || 'User'} ${userProfile?.lastName || ''}`.trim();
+                          await addRequest({
+                            userId: userProfile?.uid,
+                            userName,
+                            type: 'Credit Card Bill Payment',
+                            category: 'payment',
+                            details: {
+                              ...formData,
+                              bankName: 'SmartBank',
+                              billCategory: 'credit-card',
+                              cardType: fetchedCard.cardType
+                            },
+                            status: 'approved'
+                          });
+                        } catch (err) {
+                          setFormError(err.message);
+                        } finally {
+                          setSubmitting(false);
+                        }
+                      };
+
+                      setTimeout(processCCPayment, 1500);
                     };
 
                     return (

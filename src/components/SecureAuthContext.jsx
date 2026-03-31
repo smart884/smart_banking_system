@@ -73,30 +73,35 @@ export const AuthProvider = ({ children }) => {
 
   // 1. Listen for Auth Changes & Firestore Real-time Updates
   useEffect(() => {
+    let unsubscribeProfile = () => {};
+
     // Listen for Auth
     const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
         try {
-          // Fetch real profile from Firestore
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            const profile = userDoc.data();
-            setUserProfile({ ...profile, uid: user.uid });
-            localStorage.setItem('sb_static_user', JSON.stringify({ ...profile, uid: user.uid }));
-          } else {
-            // CRITICAL: If no Firestore profile exists, the user is effectively invalid
-            // for our banking system even if they exist in Firebase Auth.
-            console.error("Auth user exists but no Firestore profile found for UID:", user.uid);
-            setUserProfile(null);
-            localStorage.removeItem('sb_static_user');
-          }
+          // Fetch real profile from Firestore & set up a real-time listener for the current user's profile
+          const userDocRef = doc(db, 'users', user.uid);
+          unsubscribeProfile = onSnapshot(userDocRef, (doc) => {
+            if (doc.exists()) {
+              const profile = doc.data();
+              setUserProfile({ ...profile, uid: user.uid });
+              localStorage.setItem('sb_static_user', JSON.stringify({ ...profile, uid: user.uid }));
+            } else {
+              console.error("Auth user exists but no Firestore profile found for UID:", user.uid);
+              setUserProfile(null);
+              localStorage.removeItem('sb_static_user');
+            }
+          }, (err) => {
+            console.error("Error listening for user profile:", err);
+          });
         } catch (err) {
-          console.error("Error fetching user profile:", err);
+          console.error("Error setting up user profile listener:", err);
           setUserProfile(null);
         }
       } else {
         setUserProfile(null);
         localStorage.removeItem('sb_static_user');
+        unsubscribeProfile();
       }
       setLoading(false);
     });
@@ -439,12 +444,15 @@ export const AuthProvider = ({ children }) => {
         
         // Update user profile with new details from KYC request
         // Handling both old and new field formats for compatibility
+        const firstName = request.newName ? request.newName.trim().split(' ')[0] : userDoc.data().firstName;
+        const lastName = request.newName ? request.newName.trim().split(' ').slice(1).join(' ') : userDoc.data().lastName;
+        
         const updatePayload = {
           contactNumber: request.newMobile || request.mobile || userDoc.data().contactNumber,
           email: request.newEmail || request.email || userDoc.data().email,
           address: request.newAddress || request.address || userDoc.data().address,
-          firstName: request.newName ? request.newName.split(' ')[0] : userDoc.data().firstName,
-          lastName: request.newName ? request.newName.split(' ').slice(1).join(' ') : userDoc.data().lastName,
+          firstName,
+          lastName,
           kycStatus: 'Verified',
           lastKycUpdate: serverTimestamp()
         };
@@ -728,6 +736,50 @@ export const AuthProvider = ({ children }) => {
         updateServiceRequestStatus,
         initializeServiceMaster,
     performTransfer,
+    performPayment: async (paymentData) => {
+      try {
+        const { fromAccountNumber, amount, type, remark, billCategory } = paymentData;
+        
+        // 1. Find account by number
+        const accountsRef = collection(db, 'accounts');
+        const q = query(accountsRef, where('accountNumber', '==', fromAccountNumber));
+        const accSnapshot = await getDocs(q);
+        if (accSnapshot.empty) throw new Error("Source account not found");
+        
+        const accDoc = accSnapshot.docs[0];
+        const accData = accDoc.data();
+        const accRef = doc(db, 'accounts', accDoc.id);
+
+        // 2. Check balance
+        if (accData.balance < amount) throw new Error("Insufficient balance");
+
+        // 3. Update balance
+        await updateDoc(accRef, {
+          balance: accData.balance - amount,
+          lastTransactionDate: serverTimestamp()
+        });
+
+        // 4. Record transaction in 'transactions' collection
+        const timestamp = serverTimestamp();
+        await addDoc(collection(db, 'transactions'), {
+          userId: userProfile.uid,
+          userName: `${userProfile.firstName} ${userProfile.lastName}`,
+          type: type || 'Payment',
+          category: 'Debit',
+          amount: -amount,
+          fromAccount: fromAccountNumber,
+          toAccount: billCategory || 'System',
+          remark: remark || 'Bill Payment',
+          timestamp
+        });
+
+        console.log(`[Banking] Payment successful: ₹${amount} debited from ${fromAccountNumber} ✅`);
+        return { success: true };
+      } catch (err) {
+        console.error("[Banking] Payment failed:", err);
+        return { success: false, message: err.message };
+      }
+    },
     allUsers,
     systemSettings,
     updateSystemSettings: async (newSettings) => {
@@ -872,19 +924,35 @@ export const AuthProvider = ({ children }) => {
         });
 
         // 5. Record Transaction
+        const timestamp = serverTimestamp();
+        
+        // Record in user_requests for tracking
         await addDoc(collection(db, 'user_requests'), {
           userId: userProfile.uid,
           userName: `${userProfile.firstName} ${userProfile.lastName}`,
           type: 'Loan EMI Payment',
           category: 'payment',
           status: 'approved',
-          createdAt: serverTimestamp(),
+          createdAt: timestamp,
           details: {
             fromAccount: fromAccountNum,
             loanId: loanId,
             amount: amount,
             billCategory: 'loan-emi'
           }
+        });
+
+        // Record in transactions for history display
+        await addDoc(collection(db, 'transactions'), {
+          userId: userProfile.uid,
+          userName: `${userProfile.firstName} ${userProfile.lastName}`,
+          type: 'Loan EMI',
+          category: 'Debit',
+          amount: -amount,
+          fromAccount: fromAccountNum,
+          toAccount: loanId,
+          remark: `Loan EMI Payment: ${loanId}`,
+          timestamp
         });
 
         return { success: true };

@@ -17,6 +17,7 @@ export default function ApplyCreditCard() {
     pan: '',
     aadhaar: '',
     mobile: '',
+    email: '',
     income: '',
     employmentType: 'Salaried',
     cardType: 'Basic'
@@ -29,7 +30,8 @@ export default function ApplyCreditCard() {
       setFormData(prev => ({
         ...prev,
         fullName: `${userProfile.firstName} ${userProfile.lastName}`,
-        mobile: userProfile.contactNumber || ''
+        mobile: userProfile.contactNumber || '',
+        email: userProfile.email || ''
       }));
     }
     if (userAccounts.length > 0) {
@@ -186,16 +188,28 @@ export default function ApplyCreditCard() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400">Monthly Income (₹)</label>
+                        <label className="text-xs font-black uppercase tracking-widest text-slate-400">Email Address</label>
                         <Input 
-                          name="income"
-                          type="number"
-                          value={formData.income}
+                          name="email"
+                          type="email"
+                          value={formData.email}
                           onChange={handleChange}
                           required
-                          placeholder="e.g. 50000"
+                          placeholder="e.g. user@example.com"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">Monthly Income (₹)</label>
+                      <Input 
+                        name="income"
+                        type="number"
+                        value={formData.income}
+                        onChange={handleChange}
+                        required
+                        placeholder="e.g. 50000"
+                      />
                     </div>
 
                     <div className="space-y-2">

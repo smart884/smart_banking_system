@@ -181,27 +181,27 @@ export default function ClerkDashboard() {
 
      const reqDetails = selectedReq.details || selectedReq;
      
-     // Fields to check
+     // Fields to check - handle both old and new field names for compatibility
      const checks = [
        { 
          label: 'Aadhaar', 
-         match: (reqDetails.aadhar || reqDetails.aadhaar) === requesterProfile.aadhaar,
-         value: reqDetails.aadhar || reqDetails.aadhaar 
+         match: (reqDetails.currentAadhaar || reqDetails.aadhaar || reqDetails.aadhar) === requesterProfile.aadhaar,
+         value: reqDetails.currentAadhaar || reqDetails.aadhaar || reqDetails.aadhar 
        },
        { 
          label: 'PAN', 
-         match: reqDetails.pan?.toUpperCase() === requesterProfile.pan?.toUpperCase(),
-         value: reqDetails.pan 
+         match: (reqDetails.currentPan || reqDetails.pan)?.toUpperCase() === requesterProfile.pan?.toUpperCase(),
+         value: reqDetails.currentPan || reqDetails.pan 
        },
        { 
          label: 'Mobile', 
-         match: (reqDetails.mobile || reqDetails.contactNumber) === requesterProfile.contactNumber,
-         value: reqDetails.mobile || reqDetails.contactNumber 
+         match: (reqDetails.currentMobile || reqDetails.mobile || reqDetails.contactNumber) === requesterProfile.contactNumber,
+         value: reqDetails.currentMobile || reqDetails.mobile || reqDetails.contactNumber 
        },
        { 
          label: 'Email', 
-         match: reqDetails.email?.toLowerCase() === requesterProfile.email?.toLowerCase(),
-         value: reqDetails.email 
+         match: (reqDetails.currentEmail || reqDetails.email)?.toLowerCase() === requesterProfile.email?.toLowerCase(),
+         value: reqDetails.currentEmail || reqDetails.email 
        }
      ];
 

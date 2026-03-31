@@ -15,6 +15,7 @@ export default function ApplyDebitCard() {
     accountNumber: '',
     fullName: '',
     mobile: '',
+    email: '',
     aadhaar: '',
     pan: '',
     cardType: 'Classic',
@@ -30,6 +31,7 @@ export default function ApplyDebitCard() {
         ...prev,
         fullName: `${userProfile.firstName} ${userProfile.lastName}`,
         mobile: userProfile.contactNumber || '',
+        email: userProfile.email || '',
         aadhaar: userProfile.aadhaar || '',
         pan: userProfile.pan || '',
         shippingAddress: userProfile.address || ''
@@ -142,18 +144,18 @@ export default function ApplyDebitCard() {
                       </select>
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-slate-400">Full Name</label>
+                      <Input 
+                        name="fullName"
+                        value={formData.fullName}
+                        onChange={handleChange}
+                        required
+                        readOnly
+                        className="bg-slate-50"
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-xs font-black uppercase tracking-widest text-slate-400">Full Name</label>
-                        <Input 
-                          name="fullName"
-                          value={formData.fullName}
-                          onChange={handleChange}
-                          required
-                          readOnly
-                          className="bg-slate-50"
-                        />
-                      </div>
                       <div className="space-y-2">
                         <label className="text-xs font-black uppercase tracking-widest text-slate-400">Mobile Number</label>
                         <Input 
@@ -161,6 +163,17 @@ export default function ApplyDebitCard() {
                           value={formData.mobile}
                           onChange={handleChange}
                           required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black uppercase tracking-widest text-slate-400">Email Address</label>
+                        <Input 
+                          name="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={handleChange}
+                          required
+                          placeholder="e.g. user@example.com"
                         />
                       </div>
                     </div>

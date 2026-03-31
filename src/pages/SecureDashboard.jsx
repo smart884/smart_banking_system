@@ -170,14 +170,15 @@ export default function SecureDashboard() {
     addRequest, 
     requests, 
     userAccounts,
-    serviceRequests, // Added
-    cards, // Added
-    loans, // Added
-    transactions, // Added
-    fetchLoanById, // Added
-    payLoanEMI, // Added
-    performTransfer, // Added
-    fetchCardByNumber // Added
+    serviceRequests,
+    cards,
+    loans,
+    transactions,
+    fetchLoanById,
+    payLoanEMI,
+    performTransfer,
+    fetchCardByNumber,
+    allUsers
   } = useAuth();
   const [showBalance, setShowBalance] = useState(true);
   const [toast, setToast] = useState(null);
@@ -297,6 +298,17 @@ export default function SecureDashboard() {
     })
   ];
 
+  // Build a map of account numbers to names from all available transactions to resolve missing names
+  const accountNameMap = {};
+  transactions.forEach(tx => {
+    if (tx.fromAccount && tx.senderName && tx.senderName !== 'External' && tx.senderName !== 'System') {
+      accountNameMap[tx.fromAccount] = tx.senderName;
+    }
+    if (tx.toAccount && tx.recipientName && tx.recipientName !== 'External' && tx.recipientName !== 'System') {
+      accountNameMap[tx.toAccount] = tx.recipientName;
+    }
+  });
+
   // Prepare real transaction history from user requests AND the new transactions collection
   const transactionHistory = [
     ...userRequests
@@ -330,13 +342,12 @@ export default function SecureDashboard() {
       const toAcc = allAccounts.find(a => a.accountNumber === tx.toAccount);
       
       // Label for Sender: Show Account Number + Name
-      const senderName = tx.senderName || fromAcc?.userName || (tx.amount < 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'External');
+      const senderName = tx.senderName || fromAcc?.userName || accountNameMap[tx.fromAccount] || (tx.amount < 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'External');
       const fromLabel = tx.fromAccount ? `${tx.fromAccount}(${senderName})` : 'External';
       
-      // Label for Recipient: Show Account Number + Type (or Name if external)
-      const recipientLabel = tx.recipientName || toAcc?.userName || (tx.amount >= 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'System');
-      const recipientType = toAcc?.accountType || 'System';
-      const toLabel = tx.toAccount ? `${tx.toAccount}(${recipientType})` : 'System';
+      // Label for Recipient: Show Account Number + Name
+      const recipientName = tx.recipientName || toAcc?.userName || accountNameMap[tx.toAccount] || (tx.amount >= 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'System');
+      const toLabel = tx.toAccount ? `${tx.toAccount}(${recipientName})` : 'System';
       
       return {
         id: tx.id,

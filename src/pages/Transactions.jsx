@@ -16,9 +16,23 @@ import {
 } from 'lucide-react';
 
 export default function Transactions() {
-  const { transactions, loading } = useAuth();
+  const { transactions, loading, userAccounts, userProfile } = useAuth();
   const [searchTerm, setSearchTerm] = React.useState('');
   const [filterType, setFilterType] = React.useState('all');
+
+  // Build a map of account numbers to names from all available transactions to resolve missing names
+  const accountNameMap = React.useMemo(() => {
+    const map = {};
+    transactions.forEach(tx => {
+      if (tx.fromAccount && tx.senderName && tx.senderName !== 'External' && tx.senderName !== 'System') {
+        map[tx.fromAccount] = tx.senderName;
+      }
+      if (tx.toAccount && tx.recipientName && tx.recipientName !== 'External' && tx.recipientName !== 'System') {
+        map[tx.toAccount] = tx.recipientName;
+      }
+    });
+    return map;
+  }, [transactions]);
 
   const filteredTransactions = transactions.filter(t => {
     const matchesSearch = t.remark?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -118,23 +132,32 @@ export default function Transactions() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                            t.category === 'Credit' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                          }`}>
-                            {t.category === 'Credit' ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{t.remark}</p>
-                            <p className="text-xs text-slate-500 font-medium">
-                              {t.category === 'Credit' ? `From: ${t.fromAccount}` : `To: ${t.toAccount}`}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+                    filteredTransactions.map((t) => {
+                      const fromAcc = userAccounts.find(a => a.accountNumber === t.fromAccount);
+                      const toAcc = userAccounts.find(a => a.accountNumber === t.toAccount);
+                      
+                      const senderName = t.senderName || fromAcc?.userName || accountNameMap[t.fromAccount] || (t.amount < 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'External');
+                      const recipientName = t.recipientName || toAcc?.userName || accountNameMap[t.toAccount] || (t.amount >= 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'System');
+
+                      return (
+                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                                t.category === 'Credit' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                              }`}>
+                                {t.category === 'Credit' ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{t.remark}</p>
+                                <p className="text-xs text-slate-500 font-medium">
+                                  {t.category === 'Credit' 
+                                    ? `From: ${t.fromAccount}(${senderName})` 
+                                    : `To: ${t.toAccount}(${recipientName})`}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-2 text-slate-600 font-medium">
                           <Calendar size={14} className="text-slate-400" />
@@ -156,10 +179,11 @@ export default function Transactions() {
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
           </div>
         </Card>
       </Container>

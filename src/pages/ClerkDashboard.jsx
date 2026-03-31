@@ -562,16 +562,16 @@ export default function ClerkDashboard() {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {serviceRequests.filter(r => {
-                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card');
-                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan');
-                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc');
+                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
+                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
+                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
                       return false;
                     }).length === 0 ? (
-                      <tr><td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests found in this terminal.</td></tr>
+                      <tr><td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold italic">No pending requests in this terminal.</td></tr>
                     ) : serviceRequests.filter(r => {
-                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card');
-                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan');
-                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc');
+                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
+                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
+                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
                       return false;
                     }).map((req) => (
                       <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">

@@ -6,7 +6,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { useAuth } from '../components/SecureAuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Landmark, User, Briefcase, IndianRupee, Calendar, CheckCircle2, Upload, X } from 'lucide-react';
+import { Landmark, User, Briefcase, IndianRupee, Calendar, CheckCircle2, Upload, X, AlertCircle } from 'lucide-react';
 
 export default function ApplyPersonalLoan() {
   const { userProfile, userAccounts, addCreditCardRequest } = useAuth();
@@ -99,9 +99,45 @@ export default function ApplyPersonalLoan() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     
+    // 1. Validate Form Fields
+    if (!formData.loanAmount || parseFloat(formData.loanAmount) <= 0) {
+      setError('Please enter a valid loan amount.');
+      return;
+    }
+    if (!formData.mobile || formData.mobile.length < 10) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!formData.email || !formData.email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (!formData.aadhaar || formData.aadhaar.length < 12) {
+      setError('Please enter a valid 12-digit Aadhaar number.');
+      return;
+    }
+    if (!formData.pan || formData.pan.length < 10) {
+      setError('Please enter a valid 10-character PAN number.');
+      return;
+    }
+    if (!formData.companyName) {
+      setError('Please enter your company name.');
+      return;
+    }
+    if (!formData.workExperience) {
+      setError('Please enter your work experience.');
+      return;
+    }
+    if (!formData.monthlyIncome || parseFloat(formData.monthlyIncome) <= 0) {
+      setError('Please enter a valid monthly income.');
+      return;
+    }
+    
+    // 2. Check required uploads
     if (!uploads.identityProof || !uploads.addressProof || !uploads.incomeProof) {
-      setError('Please upload all required documents.');
+      setError('Please upload all required documents (Aadhaar, PAN, and Income Proof).');
       return;
     }
 
@@ -112,10 +148,15 @@ export default function ApplyPersonalLoan() {
       const interestRate = 10.5; // 10.5% p.a.
       const totalPayable = emi * tenure;
 
+      // Add safety check for userProfile
+      if (!userProfile?.uid) {
+        throw new Error('User session expired. Please log in again.');
+      }
+
       await addCreditCardRequest({
         ...formData,
         userId: userProfile.uid,
-        userName: formData.fullName,
+        userName: formData.fullName || 'User',
         type: 'Personal Loan Request',
         category: 'loan',
         status: 'P', // Pending
@@ -128,9 +169,9 @@ export default function ApplyPersonalLoan() {
       });
       setSuccess(true);
       setTimeout(() => navigate('/dashboard'), 3000);
-    } catch (error) {
-      console.error("Submission error:", error);
-      setError('Failed to submit application. Please try again.');
+    } catch (err) {
+      console.error("Submission error:", err);
+      setError(err.message || 'Failed to submit application. Please check your internet connection and try again.');
     } finally {
       setLoading(false);
     }

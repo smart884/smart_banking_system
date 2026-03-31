@@ -48,21 +48,23 @@ export default function ApplyKYC() {
 
   useEffect(() => {
     if (userProfile) {
-      const fullName = `${userProfile.firstName} ${userProfile.lastName}`;
+      // Use latest profile fields or fallbacks
+      const fullName = userProfile.fullName || `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim();
       const email = userProfile.email || '';
-      const mobile = userProfile.contactNumber || '';
-      const address = userProfile.address1 || userProfile.address || '';
+      const mobile = userProfile.contactNumber || userProfile.mobile || '';
+      const address = userProfile.address || userProfile.address1 || '';
 
       setFormData(prev => ({
         ...prev,
-        currentName: fullName,
-        currentEmail: email,
-        currentMobile: mobile,
-        currentAddress: address,
-        newName: fullName,
-        newEmail: email,
-        newMobile: mobile,
-        newAddress: address
+        currentName: fullName || 'Not Set',
+        currentEmail: email || 'Not Set',
+        currentMobile: mobile || 'Not Set',
+        currentAddress: address || 'Not Set',
+        // Only set new fields if they are currently empty to avoid overwriting user input
+        newName: prev.newName || fullName,
+        newEmail: prev.newEmail || email,
+        newMobile: prev.newMobile || mobile,
+        newAddress: prev.newAddress || address
       }));
     }
     if (userAccounts && userAccounts.length > 0) {

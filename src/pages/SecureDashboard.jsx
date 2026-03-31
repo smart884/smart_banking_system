@@ -21,6 +21,8 @@ import {
   Eye,
   EyeOff,
   Landmark,
+  IndianRupee,
+  Calendar,
   CheckCircle2,
   X,
   ArrowRight,
@@ -167,12 +169,19 @@ export default function SecureDashboard() {
     requests, 
     userAccounts,
     serviceRequests, // Added
-    cards // Added
+    cards, // Added
+    loans, // Added
+    transactions, // Added
+    fetchLoanById, // Added
+    payLoanEMI, // Added
+    performTransfer, // Added
+    fetchCardByNumber // Added
   } = useAuth();
   const [showBalance, setShowBalance] = useState(true);
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
+  const [selectedLoan, setSelectedLoan] = useState(null); // State for loan details modal
   const [transferSuccess, setTransferSuccess] = useState(false); // Success animation state
   const [billStep, setBillStep] = useState(1); // Specific sub-steps for Electricity Bill
   const [checkingBill, setCheckingBill] = useState(false); // Bill verification loading state
@@ -185,7 +194,10 @@ export default function SecureDashboard() {
   const [ccPaymentStatus, setCcPaymentStatus] = useState(null); // 'success' or 'failure'
   const [loanStep, setLoanStep] = useState(1); // 1: Entry, 2: Success
   const [loanStatus, setLoanStatus] = useState(null); // 'success' or 'failure'
+  const [fetchedLoan, setFetchedLoan] = useState(null); // State for fetched loan details
+  const [fetchedCard, setFetchedCard] = useState(null); // State for fetched card details
   const [notification, setNotification] = useState(null);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
   const userRequests = requests.filter(req => 
@@ -226,9 +238,9 @@ export default function SecureDashboard() {
     return `SB-${Math.abs(hash).toString().padEnd(12, '0').slice(0, 12)}`;
   };
 
-  // Legacy support: Requests marked as 'approved' but not yet in the official 'accounts' collection
+  // Legacy support: Requests marked as 'clerk_approved' or 'manager_approved' but not yet in the official 'accounts' collection
   const approvedRequests = userRequests.filter(req => 
-    req.category === 'account' && (req.status === 'approved' || req.status === 'clerk_approved' || req.status === 'manager_approved')
+    req.category === 'account' && (req.status === 'clerk_approved' || req.status === 'manager_approved')
   );
   
   // Combine official accounts and approved requests for display in Accounts tab
@@ -290,97 +302,112 @@ export default function SecureDashboard() {
     })
   ];
 
-  // Prepare real transaction history from user requests
-  const transactionHistory = userRequests
-    .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
-    .flatMap(req => {
-      let amountVal = parseFloat(req.details?.amount || req.details?.deposit || 0);
-      let status = req.status === 'pending_clerk' ? 'Clerk Review' : 
-                   req.status === 'clerk_approved' ? 'Manager Review' : 
-                   req.status.charAt(0).toUpperCase() + req.status.slice(1);
-      
-      const entries = [];
-      const userAccountNums = allAccounts.map(a => a.accountNumber);
-
-      if (req.category === 'account') {
-        entries.push({
-          id: `${req.id}-credit`,
-          name: `Initial Deposit (${req.details?.accountType || 'Saving'})`,
-          date: formatAccountDate(req.createdAt),
-          rawDate: req.createdAt,
-          amount: `+₹${amountVal.toLocaleString()}`,
-          amountVal,
-          status,
-          icon: '🏦',
-          isNegative: false,
-          toAccountNum: getSimulatedAccNum(req.id),
-          category: 'account'
-        });
-      } else if (req.category === 'transfer') {
-        const fromAcc = req.details?.fromAccount || 'Unknown';
-        const toAcc = req.details?.recipient || 'Unknown';
-        const isSelfTransfer = userAccountNums.includes(toAcc);
+  // Prepare real transaction history from user requests AND the new transactions collection
+  const transactionHistory = [
+    ...userRequests
+      .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
+      .flatMap(req => {
+        let amountVal = parseFloat(req.details?.amount || req.details?.deposit || 0);
+        let status = req.status === 'pending_clerk' ? 'Clerk Review' : 
+                     req.status === 'clerk_approved' ? 'Manager Review' : 
+                     req.status.charAt(0).toUpperCase() + req.status.slice(1);
         
-        // Debit Entry (Money leaving source account)
-        entries.push({
-          id: `${req.id}-debit`,
-          name: `${fromAcc} to ${isSelfTransfer ? toAcc : (req.details?.recipientName || toAcc || 'Unknown')}`,
-          date: formatAccountDate(req.createdAt),
-          rawDate: req.createdAt,
-          amount: `-₹${amountVal.toLocaleString()}`,
-          amountVal,
-          status,
-          icon: '💸',
-          isNegative: true,
-          fromAccountNum: fromAcc,
-          toAccountNum: toAcc,
-          category: 'transfer'
-        });
+        const entries = [];
+        const userAccountNums = allAccounts.map(a => a.accountNumber);
 
-        // Credit Entry (Money entering destination account if it's mine)
-        if (isSelfTransfer) {
+        if (req.category === 'account') {
           entries.push({
             id: `${req.id}-credit`,
-            name: `${fromAcc} to ${toAcc}`,
+            name: `Initial Deposit (${req.details?.accountType || 'Saving'})`,
             date: formatAccountDate(req.createdAt),
             rawDate: req.createdAt,
             amount: `+₹${amountVal.toLocaleString()}`,
             amountVal,
             status,
-            icon: '💸',
+            icon: '🏦',
             isNegative: false,
+            toAccountNum: getSimulatedAccNum(req.id),
+            category: 'account'
+          });
+        } else if (req.category === 'transfer') {
+          const fromAcc = req.details?.fromAccount || 'Unknown';
+          const toAcc = req.details?.recipient || 'Unknown';
+          const isSelfTransfer = userAccountNums.includes(toAcc);
+          
+          // Debit Entry (Money leaving source account)
+          entries.push({
+            id: `${req.id}-debit`,
+            name: `${fromAcc} to ${isSelfTransfer ? toAcc : (req.details?.recipientName || toAcc || 'Unknown')}`,
+            date: formatAccountDate(req.createdAt),
+            rawDate: req.createdAt,
+            amount: `-₹${amountVal.toLocaleString()}`,
+            amountVal,
+            status,
+            icon: '💸',
+            isNegative: true,
             fromAccountNum: fromAcc,
             toAccountNum: toAcc,
             category: 'transfer'
           });
-        }
-      } else if (req.category === 'payment') {
-        const fromAcc = req.details?.fromAccount || 'Unknown';
-        const billCat = req.details?.billCategory;
-        const billName = billCat ? `${billCat.charAt(0).toUpperCase() + billCat.slice(1)}` : 'Bill';
-        
-        entries.push({
-          id: `${req.id}-debit`,
-          name: `${fromAcc} to ${billName}`,
-          date: formatAccountDate(req.createdAt),
-          rawDate: req.createdAt,
-          amount: `-₹${amountVal.toLocaleString()}`,
-          amountVal,
-          status,
-          icon: '🧾',
-          isNegative: true,
-          fromAccountNum: fromAcc,
-          category: 'payment'
-        });
-      }
 
-      return entries;
-    })
-    .sort((a, b) => {
-       const dateA = getDateObject(a.rawDate);
-       const dateB = getDateObject(b.rawDate);
-       return dateB.getTime() - dateA.getTime();
-     });
+          // Credit Entry (Money entering destination account if it's mine)
+          if (isSelfTransfer) {
+            entries.push({
+              id: `${req.id}-credit`,
+              name: `${fromAcc} to ${toAcc}`,
+              date: formatAccountDate(req.createdAt),
+              rawDate: req.createdAt,
+              amount: `+₹${amountVal.toLocaleString()}`,
+              amountVal,
+              status,
+              icon: '💸',
+              isNegative: false,
+              fromAccountNum: fromAcc,
+              toAccountNum: toAcc,
+              category: 'transfer'
+            });
+          }
+        } else if (req.category === 'payment') {
+          const fromAcc = req.details?.fromAccount || 'Unknown';
+          const billCat = req.details?.billCategory;
+          const billName = billCat ? `${billCat.charAt(0).toUpperCase() + billCat.slice(1)}` : 'Bill';
+          
+          entries.push({
+            id: `${req.id}-debit`,
+            name: `${fromAcc} to ${billName}`,
+            date: formatAccountDate(req.createdAt),
+            rawDate: req.createdAt,
+            amount: `-₹${amountVal.toLocaleString()}`,
+            amountVal,
+            status,
+            icon: '🧾',
+            isNegative: true,
+            fromAccountNum: fromAcc,
+            category: 'payment'
+          });
+        }
+
+        return entries;
+      }),
+    ...transactions.map(tx => ({
+      id: tx.id,
+      name: tx.remark || tx.type,
+      date: formatAccountDate(tx.timestamp),
+      rawDate: tx.timestamp,
+      amount: `${tx.amount >= 0 ? '+' : '-'}₹${Math.abs(tx.amount).toLocaleString()}`,
+      amountVal: Math.abs(tx.amount),
+      status: 'Approved',
+      icon: tx.amount >= 0 ? '💰' : '💸',
+      isNegative: tx.amount < 0,
+      fromAccountNum: tx.fromAccount,
+      toAccountNum: tx.toAccount,
+      category: tx.type?.toLowerCase() || 'transfer'
+    }))
+  ].sort((a, b) => {
+    const dateA = getDateObject(a.rawDate);
+    const dateB = getDateObject(b.rawDate);
+    return dateB.getTime() - dateA.getTime();
+  });
 
   // Calculate real Inflow and Outflow
   const totalInflow = transactionHistory
@@ -391,8 +418,66 @@ export default function SecureDashboard() {
     .filter(tx => tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
     .reduce((sum, tx) => sum + tx.amountVal, 0);
 
-  // Calculate real total balance: Sum of all inflows minus sum of all outflows
-  const totalBalance = totalInflow - totalOutflow;
+  // Calculate real total balance: Sum of all account balances in allAccounts
+  const totalBalance = allAccounts.reduce((sum, acc) => sum + (parseFloat(acc.balance) || 0), 0);
+
+  const handleFetchLoan = async (loanIdToFetch) => {
+    const searchId = loanIdToFetch || formData.refNum;
+    if (!searchId) {
+      setFormError('Please enter a Loan ID.');
+      return;
+    }
+    setCheckingBill(true);
+    setFormError('');
+    try {
+      const loan = await fetchLoanById(searchId);
+      if (loan) {
+        setFetchedLoan(loan);
+        setFormData(prev => ({ 
+          ...prev, 
+          refNum: searchId,
+          cardHolder: loan.userName,
+          amount: loan.emi 
+        }));
+      } else {
+        setFetchedLoan(null);
+        if (loanIdToFetch) {
+          // If auto-fetching and not found, don't necessarily show error immediately
+        } else {
+          setFormError('Invalid Loan ID or Loan not found.');
+        }
+      }
+    } catch (err) {
+      setFormError('Error searching for loan.');
+    } finally {
+      setCheckingBill(false);
+    }
+  };
+
+  const handleFetchCard = async (cardNumber) => {
+    if (!cardNumber) return;
+    setCheckingBill(true);
+    setFormError('');
+    try {
+      const card = await fetchCardByNumber(cardNumber);
+      if (card) {
+        setFetchedCard(card);
+        setFormData(prev => ({ 
+          ...prev, 
+          cardHolder: card.userName,
+          // Mock bill details for now
+          amount: (card.limit * 0.25).toFixed(2) // Mock: 25% of limit is due
+        }));
+      } else {
+        setFetchedCard(null);
+        setFormError('Credit Card not found or not registered with SmartBank.');
+      }
+    } catch (err) {
+      setFormError('Error searching for credit card.');
+    } finally {
+      setCheckingBill(false);
+    }
+  };
 
   const [modal, setModal] = useState({
     isOpen: false,
@@ -472,7 +557,16 @@ export default function SecureDashboard() {
   };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+    
+    // Auto-uppercase Loan IDs and PAN for better UX
+    if (name === 'refNum' && formData.billCategory === 'loan-emi') {
+      value = value.toUpperCase();
+    }
+    if (name === 'pan') {
+      value = value.toUpperCase();
+    }
+
     setFormData((prev) => {
       const updated = { ...prev, [name]: value };
       
@@ -481,10 +575,20 @@ export default function SecureDashboard() {
       if (name === 'board' || name === 'state') updated.city = '';
       
       // Credit Card Flow Logic
-      if (name === 'ccAmountOption') {
-        if (value === 'total') updated.amount = MOCK_CC_DETAILS.totalAmount;
-        else if (value === 'min') updated.amount = MOCK_CC_DETAILS.minDue;
-        else updated.amount = '';
+      if (name === 'refNum' && prev.billCategory === 'credit-card') {
+        // Auto-format card number as XXXX XXXX XXXX XXXX
+        let clean = value.replace(/\s/g, '').replace(/\D/g, '');
+        let formatted = '';
+        for (let i = 0; i < clean.length; i++) {
+          if (i > 0 && i % 4 === 0) formatted += ' ';
+          formatted += clean[i];
+        }
+        updated.refNum = formatted;
+        
+        // Trigger fetch when 16 digits (19 chars with spaces) are entered
+        if (clean.length === 16) {
+          handleFetchCard(formatted);
+        }
       }
       
       // Reset flows if category changes
@@ -496,6 +600,8 @@ export default function SecureDashboard() {
         setCcPaymentStatus(null);
         setLoanStep(1);
         setLoanStatus(null);
+        setFetchedLoan(null);
+        setFetchedCard(null);
         updated.refNum = '';
         updated.amount = '';
         updated.provider = '';
@@ -508,18 +614,21 @@ export default function SecureDashboard() {
           updated.ccAmountOption = 'total';
           updated.amount = MOCK_CC_DETAILS.totalAmount;
         } else if (value === 'loan-emi') {
-          updated.amount = MOCK_LOAN_DETAILS.emiAmount + MOCK_LOAN_DETAILS.lateFee;
-          // Clear loan holder on category change, wait for ID input
+          updated.amount = '';
           updated.cardHolder = '';
+          setFetchedLoan(null);
         }
       }
 
       // Auto-fetch Loan details if ID matches
       if (name === 'refNum' && prev.billCategory === 'loan-emi') {
-        if (value === MOCK_LOAN_DETAILS.loanId) {
-          updated.cardHolder = MOCK_LOAN_DETAILS.loanHolder;
-        } else {
-          updated.cardHolder = '';
+        // Reset fetched loan if refNum changes
+        setFetchedLoan(null);
+        updated.cardHolder = '';
+        
+        // Auto-fetch if the ID looks complete (starts with L- and has 11 chars total)
+        if (value.startsWith('L-') && value.length >= 11) {
+          handleFetchLoan(value);
         }
       }
       
@@ -655,25 +764,47 @@ export default function SecureDashboard() {
 
     // Fund Transfer Success Animation & Auto-Approval
     if (modal.type === 'transfer' || modal.type === 'bill-pay') {
-      setTimeout(() => {
-        addRequest({
-          userId: userProfile?.uid,
-          userName,
-          type: modal.title,
-          category,
-          details: formData,
-          status: 'approved' // Self & verified transfers/payments are auto-approved for balance deduction
-        }).then(() => {
-          if (modal.type === 'transfer') setTransferSuccess(true);
+      const isTransfer = modal.type === 'transfer';
+      
+      const processTransfer = async () => {
+        try {
+          if (isTransfer) {
+            const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+            const result = await performTransfer({
+              fromAccountId: sourceAcc.id,
+              toAccountNumber: formData.recipient,
+              amount: parseFloat(formData.amount),
+              remark: formData.remark || 'Fund Transfer'
+            });
+            
+            if (!result.success) throw new Error(result.message);
+            setTransferSuccess(true);
+          } else {
+            // For bill payments, we still use the old request-based system for now
+            // but we could also implement a real deduction here if needed.
+            await addRequest({
+              userId: userProfile?.uid,
+              userName,
+              type: modal.title,
+              category,
+              details: formData,
+              status: 'approved'
+            });
+          }
+
           setTimeout(() => {
-            showToast(`${modal.type === 'transfer' ? `₹${formData.amount} transferred` : 'Bill paid'} successfully! ✅`);
+            showToast(`${isTransfer ? `₹${formData.amount} transferred` : 'Bill paid'} successfully! ✅`);
             closeModal();
             setTransferSuccess(false);
+            setSubmitting(false);
           }, 2000);
-        }).finally(() => {
+        } catch (err) {
+          setFormError(err.message);
           setSubmitting(false);
-        });
-      }, 1500); // Simulated processing time
+        }
+      };
+
+      setTimeout(processTransfer, 1500);
       return;
     }
 
@@ -1046,10 +1177,86 @@ export default function SecureDashboard() {
                 <p className="font-black text-slate-900 uppercase tracking-widest">Recharge</p>
               </button>
             </div>
+            
             <div className="bg-white rounded-[40px] shadow-xl border border-slate-100 overflow-hidden">
-              <div className="p-8 border-b border-slate-50"><h3 className="text-xl font-black text-slate-900">Recent Payments</h3></div>
-              <div className="p-10 text-center text-slate-400 font-medium">No recent payments found.</div>
+              <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                <h3 className="text-xl font-black text-slate-900">Recent Payments</h3>
+                <button onClick={() => setActiveTab('history')} className="text-xs font-black text-blue-600 uppercase tracking-widest hover:underline">View All Statement</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <tbody className="divide-y divide-slate-50">
+                    {transactionHistory.filter(tx => tx.category === 'payment' || tx.category === 'transfer').length > 0 ? (
+                      transactionHistory
+                        .filter(tx => tx.category === 'payment' || tx.category === 'transfer')
+                        .slice(0, 5)
+                        .map((tx) => (
+                        <tr key={tx.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${tx.isNegative ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                {tx.icon}
+                              </div>
+                              <div>
+                                <p className="font-black text-slate-900">{tx.name}</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{tx.date}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <p className={`text-lg font-black ${tx.isNegative ? 'text-slate-900' : 'text-emerald-600'}`}>{tx.amount}</p>
+                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Processed ✅</span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td className="p-20 text-center">
+                          <History size={48} className="text-slate-200 mx-auto mb-4" />
+                          <p className="text-slate-400 font-black uppercase tracking-widest italic">No recent payments found.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
+
+            {/* Payment Notifications Section */}
+            {userRequests.filter(r => r.category === 'payment').length > 0 && (
+              <div className="mt-12 space-y-6">
+                <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
+                  <Bell className="text-blue-600" /> Payment Notifications
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {userRequests.filter(r => r.category === 'payment').slice(0, 4).map(req => (
+                    <div key={req.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:border-blue-200 transition-all">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
+                        req.status === 'rejected' ? 'bg-rose-50 text-rose-500' : 'bg-amber-50 text-amber-500'
+                      }`}>
+                        {req.status === 'approved' ? <CheckCircle2 size={18} /> :
+                         req.status === 'rejected' ? <X size={18} /> : <Clock size={18} />}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-2">
+                          <p className="font-black text-slate-900 text-sm">{req.type}</p>
+                          <span className="text-[10px] font-black text-slate-400 uppercase">{formatAccountDate(req.createdAt)}</span>
+                        </div>
+                        <p className="text-xs font-medium text-slate-500 leading-relaxed">
+                          Your payment of ₹{parseFloat(req.details?.amount || 0).toLocaleString()} is {req.status === 'approved' ? 'successfully processed' : req.status === 'rejected' ? 'declined by bank' : 'under review'}.
+                        </p>
+                        {req.clerkRemark && (
+                          <div className="mt-3 p-3 bg-rose-50/50 rounded-xl border-l-2 border-rose-500">
+                            <p className="text-[10px] font-black text-rose-600 italic">" {req.clerkRemark} "</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       case 'analytics':
@@ -1175,7 +1382,7 @@ export default function SecureDashboard() {
             {serviceRequests.length > 0 && (
               <div className="space-y-8 pt-12 border-t border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-4">
-                  <History className="text-blue-600" /> Recent Card Requests
+                  <Bell className="text-blue-600" /> Recent Card Requests
                 </h3>
                 <div className="bg-white rounded-[40px] border border-slate-50 shadow-xl overflow-hidden">
                   <table className="w-full text-left border-collapse">
@@ -1190,7 +1397,10 @@ export default function SecureDashboard() {
                     <tbody className="divide-y divide-slate-50">
                       {serviceRequests.map((req) => (
                         <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
-                          <td className="px-10 py-8 font-black text-slate-900">{req.type}</td>
+                          <td className="px-10 py-8">
+                            <p className="font-black text-slate-900">{req.type}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Ref: {req.id.slice(-8).toUpperCase()}</p>
+                          </td>
                           <td className="px-10 py-8 text-sm font-medium text-slate-500">{new Date(req.createdAt).toLocaleDateString()}</td>
                           <td className="px-10 py-8">
                             <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-full border ${
@@ -1205,23 +1415,24 @@ export default function SecureDashboard() {
                             </span>
                           </td>
                           <td className="px-10 py-8 text-right">
-                            {req.status === 'S' ? (
-                              <span className="text-emerald-600 font-bold">Approval Granted ✅</span>
-                            ) : req.status === 'R' ? (
-                              <div className="flex flex-col items-end gap-2">
-                                <span className="text-rose-600 font-bold">Request Declined ❌</span>
-                                {req.type === 'KYC Update' && (
-                                  <button 
-                                    onClick={() => navigate('/apply-kyc')}
-                                    className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
-                                  >
-                                    Re-submit Documents
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-600 font-bold">In Review Terminal 🔄</span>
-                            )}
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="font-bold text-slate-900 text-sm">
+                                {req.status === 'S' ? 'Approval Granted ✅' : req.status === 'R' ? 'Request Declined ❌' : 'In Review Terminal 🔄'}
+                              </span>
+                              {(req.managerRemark || req.clerkRemark) && (
+                                <p className="text-[10px] font-black text-rose-500 italic max-w-[200px]">
+                                  "{req.managerRemark || req.clerkRemark}"
+                                </p>
+                              )}
+                              {req.status === 'R' && req.type === 'KYC Update' && (
+                                <button 
+                                  onClick={() => navigate('/apply-kyc')}
+                                  className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                                >
+                                  Re-submit Documents
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1299,6 +1510,175 @@ export default function SecureDashboard() {
             </div>
           </div>
         );
+      case 'loans':
+        return (
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">My Loan Portfolio</h2>
+                <p className="text-slate-500 font-medium text-lg">Track and manage your active loans and repayments.</p>
+              </div>
+              <button 
+                onClick={() => navigate('/apply-personal-loan')} 
+                className="px-8 py-4 bg-slate-900 text-white rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-blue-600 transition-all shadow-2xl flex items-center gap-3"
+              >
+                <PlusCircle size={20} /> New Loan Application
+              </button>
+            </div>
+
+            {loans.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {loans.map((loan, idx) => (
+                  <div key={loan.id} className="group bg-white rounded-[48px] p-10 shadow-xl border border-slate-100 hover:border-blue-200 transition-all relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-32 bg-blue-600/5 rounded-full blur-[80px] -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-1000"></div>
+                    
+                    <div className="relative z-10">
+                      <div className="flex justify-between items-start mb-10">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
+                            <IndianRupee size={32} />
+                          </div>
+                          <div>
+                            <h4 className="text-xl font-black text-slate-900">{loan.purpose} Loan</h4>
+                            <div className="flex flex-col gap-1 mt-1">
+                              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Loan ID: {loan.loanId || loan.id.substring(0, 10).toUpperCase()}</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Account: {loan.accountNumber || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                          loan.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'
+                        }`}>
+                          {loan.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Loan Amount</p>
+                          <p className="text-lg font-black text-slate-900">₹{parseFloat(loan.loanAmount).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly EMI</p>
+                          <p className="text-lg font-black text-blue-600">₹{parseFloat(loan.emi).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tenure</p>
+                          <p className="text-lg font-black text-slate-900">{loan.tenure} Months</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest</p>
+                          <p className="text-lg font-black text-slate-900">{loan.interestRate}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-10 p-8 bg-slate-50 rounded-[32px] border border-slate-100">
+                        <div className="flex justify-between items-end mb-4">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Repayment Progress</p>
+                            <p className="text-sm font-bold text-slate-600">₹{parseFloat(loan.paidAmount || 0).toLocaleString()} paid of ₹{parseFloat(loan.totalPayable || 0).toLocaleString()}</p>
+                          </div>
+                          <p className="text-lg font-black text-slate-900">
+                            {loan.totalPayable > 0 ? Math.round((loan.paidAmount / loan.totalPayable) * 100) : 0}%
+                          </p>
+                        </div>
+                        <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-100">
+                          <div 
+                            className="h-full bg-blue-600 rounded-full transition-all duration-1000" 
+                            style={{ width: `${loan.totalPayable > 0 ? Math.round((loan.paidAmount / loan.totalPayable) * 100) : 0}%` }} 
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-10 pt-8 border-t border-slate-50 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className="text-slate-400" />
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Started: {new Date(loan.startDate).toLocaleDateString('en-IN')}</p>
+                        </div>
+                        <button 
+                          onClick={() => setSelectedLoan(loan)}
+                          className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2"
+                        >
+                          View EMI Schedule <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-32 text-center bg-white rounded-[48px] border-2 border-dashed border-slate-100">
+                <div className="w-24 h-24 bg-slate-50 text-slate-300 rounded-[32px] flex items-center justify-center mx-auto mb-8">
+                  <Landmark size={48} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 mb-4">No Active Loans Found</h3>
+                <p className="text-slate-500 font-medium mb-10 max-w-md mx-auto">Apply for a personal loan today to fulfill your dreams with our low-interest plans and instant approval.</p>
+                <button 
+                  onClick={() => navigate('/apply-personal-loan')} 
+                  className="px-10 py-5 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl"
+                >
+                  Apply for Loan
+                </button>
+              </div>
+            )}
+
+            {/* Application Status Section */}
+            {serviceRequests.filter(r => r.type?.toLowerCase().includes('loan')).length > 0 && (
+              <div className="space-y-8 pt-12 border-t border-slate-100">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-4">
+                  <Bell className="text-blue-600" /> Loan Application Status
+                </h3>
+                <div className="bg-white rounded-[40px] border border-slate-50 shadow-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-50">
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Loan Type</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount Requested</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Status</th>
+                        <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Remark / Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {serviceRequests.filter(r => r.type?.toLowerCase().includes('loan')).map((req) => (
+                        <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-10 py-8">
+                            <p className="font-black text-slate-900">{req.type}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Ref: {req.id.slice(-8).toUpperCase()}</p>
+                          </td>
+                          <td className="px-10 py-8 font-black text-blue-600">₹{parseFloat(req.loanAmount || req.details?.loanAmount || 0).toLocaleString()}</td>
+                          <td className="px-10 py-8">
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-full border ${
+                              req.status === 'P' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                              req.status === 'I' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                              req.status === 'S' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                              'bg-rose-50 text-rose-600 border-rose-100'
+                            }`}>
+                              {req.status === 'P' ? 'Pending (P)' : 
+                               req.status === 'I' ? 'In Progress (I)' : 
+                               req.status === 'S' ? 'Approved (S)' : 'Rejected (R)'}
+                            </span>
+                          </td>
+                          <td className="px-10 py-8 text-right">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="font-bold text-slate-900 text-sm">
+                                {req.status === 'S' ? 'Funds Disbursed ✅' : req.status === 'R' ? 'Application Declined ❌' : 'In Verification 🔄'}
+                              </span>
+                              {(req.managerRemark || req.clerkRemark) && (
+                                <p className="text-[10px] font-black text-rose-500 italic max-w-[200px]">
+                                  "{req.managerRemark || req.clerkRemark}"
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
       default:
         return (
           <div className="bg-white rounded-[40px] p-20 text-center border border-slate-100 shadow-sm">
@@ -1345,6 +1725,7 @@ export default function SecureDashboard() {
           {[
             { id: 'dashboard', icon: LayoutIcon, label: 'Overview' },
             { id: 'accounts', icon: Landmark, label: 'Accounts' },
+            { id: 'loans', icon: Briefcase, label: 'My Loans' },
             { id: 'cards', icon: CardIcon, label: 'My Cards' },
             { id: 'payments', icon: Receipt, label: 'Payments' },
             { id: 'analytics', icon: PieChart, label: 'Insights' },
@@ -1365,17 +1746,6 @@ export default function SecureDashboard() {
         </nav>
 
         <div className="mt-auto pt-8 border-t border-slate-800 space-y-4">
-          <div className="bg-slate-800/50 rounded-3xl p-6 border border-slate-700 group hover:border-blue-500/50 transition-colors">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-blue-400 shadow-sm">
-                <ShieldCheck size={20} />
-              </div>
-              <span className="font-bold text-sm text-white">Premium Plan</span>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed mb-4">Unlock advanced analytics and higher limits with Pro.</p>
-            <button className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all">UPGRADE NOW</button>
-          </div>
-
           <button onClick={logout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group">
             <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
             <span className="font-bold tracking-tight text-sm uppercase tracking-widest">Sign Out</span>
@@ -1398,11 +1768,72 @@ export default function SecureDashboard() {
             <p className="mt-2 text-slate-500 font-medium text-base">Your financial ecosystem is performing optimally today.</p>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button className="w-12 h-12 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-100 hover:shadow-lg transition-all relative">
-              <Bell size={20} />
-              <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+          <div className="flex items-center gap-4 relative">
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`w-12 h-12 bg-white border ${showNotifications ? 'border-blue-600 shadow-lg shadow-blue-100' : 'border-slate-100'} rounded-xl flex items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-100 hover:shadow-lg transition-all relative`}
+            >
+              <Bell size={20} className={showNotifications ? 'text-blue-600' : ''} />
+              {(userRequests.length > 0 || serviceRequests.length > 0) && (
+                <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>
+              )}
             </button>
+
+            {/* Notification Dropdown */}
+            {showNotifications && (
+              <div className="absolute top-16 right-0 w-96 bg-white rounded-[32px] shadow-2xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Recent Activity</h3>
+                  <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+                </div>
+                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                  {[...userRequests, ...serviceRequests]
+                    .sort((a, b) => getDateObject(b.createdAt) - getDateObject(a.createdAt))
+                    .slice(0, 10)
+                    .map((notif) => (
+                    <div key={notif.id} className="p-5 border-b border-slate-50 hover:bg-slate-50/80 transition-all group">
+                      <div className="flex gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          notif.status === 'approved' || notif.status === 'S' || notif.status === 'clerk_approved' || notif.status === 'manager_approved' ? 'bg-emerald-50 text-emerald-600' :
+                          notif.status === 'rejected' || notif.status === 'R' ? 'bg-rose-50 text-rose-500' : 'bg-amber-50 text-amber-500'
+                        }`}>
+                          {notif.status === 'approved' || notif.status === 'S' || notif.status === 'clerk_approved' || notif.status === 'manager_approved' ? <CheckCircle2 size={18} /> :
+                           notif.status === 'rejected' || notif.status === 'R' ? <X size={18} /> : <Clock size={18} />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-black text-slate-900 uppercase tracking-tight">{notif.type || 'Service Request'}</p>
+                            <span className="text-[10px] font-medium text-slate-400">{formatAccountDate(notif.createdAt)}</span>
+                          </div>
+                          <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                            {notif.status === 'approved' || notif.status === 'S' ? `Your ${notif.type || 'request'} has been fully approved.` :
+                             notif.status === 'clerk_approved' ? 'Approved by Clerk, awaiting Manager review.' :
+                             notif.status === 'manager_approved' ? 'Final approval granted by Manager.' :
+                             notif.status === 'rejected' || notif.status === 'R' ? `Your ${notif.type || 'request'} was declined.` :
+                             'Your request is currently under review.'}
+                          </p>
+                          {(notif.clerkRemark || notif.managerRemark) && (
+                            <p className="mt-2 text-[10px] font-black text-rose-500 italic bg-rose-50/50 p-2 rounded-lg border-l-2 border-rose-500">
+                              Note: {notif.managerRemark || notif.clerkRemark}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {[...userRequests, ...serviceRequests].length === 0 && (
+                    <div className="p-10 text-center">
+                      <Bell size={32} className="text-slate-200 mx-auto mb-3" />
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No new notifications</p>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+                  <button onClick={() => setShowNotifications(false)} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Mark all as read</button>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-3 bg-white border border-slate-100 p-1.5 pr-5 rounded-xl shadow-sm">
               <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
                 <UserIcon size={20} />
@@ -1779,88 +2210,141 @@ export default function SecureDashboard() {
 
                   {/* SPECIAL FLOW: Loan EMI Payment */}
                   {formData.billCategory === 'loan-emi' && (() => {
-                    const showLoanDetails = formData.refNum === MOCK_LOAN_DETAILS.loanId;
-                    const emiAmount = MOCK_LOAN_DETAILS.emiAmount;
-                    const penalty = MOCK_LOAN_DETAILS.lateFee;
+                    const emiAmount = fetchedLoan?.emi || 0;
+                    const penalty = 0; // Mock penalty for simplicity, could be added to schema later
                     const totalPayable = emiAmount + penalty;
-                    const isAmountBelowEmi = showLoanDetails && parseFloat(formData.amount || 0) < emiAmount;
+                    const isAmountBelowEmi = fetchedLoan && parseFloat(formData.amount || 0) < emiAmount;
                     
                     const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
                     const isBalanceInsufficient = sourceAccount && sourceAccount.balance < parseFloat(formData.amount || 0);
+
+                    const handlePayment = async () => {
+                      if (!formData.fromAccount) {
+                        setFormError('Please select a source account to pay from.');
+                        return;
+                      }
+                      if (isAmountBelowEmi) {
+                        setFormError(`EMI payment must be at least ₹${emiAmount.toLocaleString()}.`);
+                        return;
+                      }
+                      if (isBalanceInsufficient) {
+                        setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
+                        return;
+                      }
+                      
+                      setFormError('');
+                      setSubmitting(true);
+                      try {
+                        const result = await payLoanEMI(formData.refNum, parseFloat(formData.amount), formData.fromAccount);
+                        if (result.success) {
+                          setLoanStatus('success');
+                          setLoanStep(2);
+                        } else {
+                          setFormError(result.message || 'Payment failed.');
+                        }
+                      } catch (err) {
+                        setFormError('An unexpected error occurred during payment.');
+                      } finally {
+                        setSubmitting(false);
+                      }
+                    };
 
                     return (
                       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                         {loanStep === 1 && (
                           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              <Input 
-                                label="Loan Account Number / ID" 
-                                name="refNum" 
-                                placeholder="Enter Loan ID (Try: AD14235346457567)" 
-                                onChange={handleInputChange} 
-                                value={formData.refNum || ''} 
-                                required 
-                              />
-                              {showLoanDetails && (
-                                <div className="animate-in fade-in slide-in-from-left-4">
+                            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+                              <div className="flex gap-4 items-end">
+                                <div className="flex-1">
                                   <Input 
-                                    label="Account Holder Name" 
+                                    label="Loan ID / Reference ID" 
+                                    name="refNum" 
+                                    placeholder="Enter Loan ID (e.g. L-XXXXXXXXX)" 
+                                    onChange={handleInputChange} 
+                                    value={formData.refNum || ''} 
+                                    required 
+                                  />
+                                </div>
+                                <button 
+                                  type="button"
+                                  onClick={() => handleFetchLoan()}
+                                  disabled={checkingBill || !formData.refNum}
+                                  className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
+                                >
+                                  {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Fetch Details'}
+                                </button>
+                              </div>
+
+                              {fetchedLoan && (
+                                <div className="animate-in fade-in slide-in-from-top-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  <Input 
+                                    label="Loan Holder Name" 
                                     name="cardHolder" 
-                                    placeholder="Fetching..." 
-                                    value={formData.cardHolder || ''} 
+                                    value={fetchedLoan.userName || ''} 
                                     readOnly
                                     required 
                                   />
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Loan Status</p>
+                                    <span className={`px-3 py-1 ${fetchedLoan.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'} text-[10px] font-black rounded-full uppercase tracking-tighter`}>
+                                      {fetchedLoan.status}
+                                    </span>
+                                  </div>
                                 </div>
                               )}
                             </div>
 
-                            {showLoanDetails && (
+                            {fetchedLoan && (
                               <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
                                 {/* Loan Overview Cards */}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                   <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Loan</p>
-                                    <p className="text-xs font-black text-slate-900">₹{MOCK_LOAN_DETAILS.totalLoanAmount.toLocaleString()}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Amount</p>
+                                    <p className="text-xs font-black text-slate-900">₹{fetchedLoan.loanAmount?.toLocaleString()}</p>
                                   </div>
                                   <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest</p>
-                                    <p className="text-xs font-black text-slate-900">₹{MOCK_LOAN_DETAILS.interestAmount.toLocaleString()}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest Rate</p>
+                                    <p className="text-xs font-black text-slate-900">{fetchedLoan.interestRate}</p>
                                   </div>
                                   <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
                                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining</p>
-                                    <p className="text-xs font-black text-blue-600">₹{MOCK_LOAN_DETAILS.remainingBalance.toLocaleString()}</p>
+                                    <p className="text-xs font-black text-blue-600">₹{fetchedLoan.remainingBalance?.toLocaleString()}</p>
                                   </div>
-                                  <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest mb-1">Late Fee</p>
-                                    <p className="text-xs font-black text-rose-600">₹{penalty.toLocaleString()}</p>
+                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Amount</p>
+                                    <p className="text-xs font-black text-emerald-600">₹{(fetchedLoan.paidAmount || 0).toLocaleString()}</p>
                                   </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                   <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">EMI Amount</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly EMI</p>
                                     <p className="text-sm font-black text-slate-900">₹{emiAmount.toLocaleString()}</p>
                                   </div>
                                   <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
-                                    <p className="text-sm font-black text-rose-500">{MOCK_LOAN_DETAILS.dueDate}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Next Due Date</p>
+                                    <p className="text-sm font-black text-blue-600">
+                                      {(() => {
+                                        const nextEmi = fetchedLoan.emiSchedule?.find(item => item.status === 'Pending');
+                                        return nextEmi ? new Date(nextEmi.dueDate).toLocaleDateString() : 'Paid Off';
+                                      })()}
+                                    </p>
                                   </div>
                                 </div>
 
                                 <div className="p-6 bg-blue-600 rounded-[32px] border border-blue-500 shadow-xl shadow-blue-100 flex items-center justify-between text-white">
                                   <div>
-                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Total Payable (EMI + Penalty)</p>
+                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Payable EMI</p>
                                     <p className="text-3xl font-black">₹{totalPayable.toLocaleString()}</p>
                                   </div>
                                   <div className="text-right">
-                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Status</p>
-                                    <span className="px-3 py-1 bg-rose-500 text-white text-[10px] font-black rounded-full uppercase tracking-tighter shadow-sm">Overdue</span>
+                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Verification</p>
+                                    <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-black rounded-full uppercase tracking-tighter border border-white/30 backdrop-blur-sm">Verified Loan</span>
                                   </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                  <label className="label">Amount to Pay (₹)</label>
+                                  <label className="label">Payment Amount (₹)</label>
                                   <div className="relative">
                                     <input 
                                       type="number" 
@@ -1874,11 +2358,6 @@ export default function SecureDashboard() {
                                     {isAmountBelowEmi && (
                                       <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
                                         Min ₹{emiAmount.toLocaleString()} required for EMI
-                                      </p>
-                                    )}
-                                    {!isAmountBelowEmi && parseFloat(formData.amount || 0) > totalPayable && (
-                                      <p className="absolute -bottom-5 left-0 text-[9px] font-black text-blue-500 uppercase tracking-widest animate-in slide-in-from-top-1">
-                                        Prepayment applied (closing loan faster)
                                       </p>
                                     )}
                                   </div>
@@ -1896,37 +2375,11 @@ export default function SecureDashboard() {
                               </button>
                               <button 
                                 type="button" 
-                                onClick={() => {
-                                  if (!formData.fromAccount) {
-                                    setFormError('Please select a source account to pay from.');
-                                    return;
-                                  }
-                                  if (isAmountBelowEmi) {
-                                    setFormError(`EMI payment must be at least ₹${emiAmount.toLocaleString()}.`);
-                                    return;
-                                  }
-                                  if (isBalanceInsufficient) {
-                                    setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
-                                    return;
-                                  }
-                                  if (!formData.refNum || !formData.cardHolder || !formData.amount) {
-                                    setFormError('Please fill in all required fields.');
-                                    return;
-                                  }
-                                  
-                                  setFormError('');
-                                  setSubmitting(true);
-                                  // Simulate EMI payment processing
-                                  setTimeout(() => {
-                                    setSubmitting(false);
-                                    setLoanStatus('success');
-                                    setLoanStep(2);
-                                  }, 2000);
-                                }}
-                                disabled={submitting || !showLoanDetails || isAmountBelowEmi}
+                                onClick={handlePayment}
+                                disabled={submitting || !fetchedLoan || isAmountBelowEmi}
                                 className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
                               >
-                                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay EMI <ArrowRight size={18} /></>}
+                                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Confirm Payment <ArrowRight size={18} /></>}
                               </button>
                             </div>
                           </div>
@@ -1938,21 +2391,21 @@ export default function SecureDashboard() {
                               <CheckCircle2 size={56} />
                             </div>
                             <div className="space-y-3">
-                              <h4 className="text-3xl font-black text-slate-900 tracking-tight">EMI Paid!</h4>
-                              <p className="text-slate-500 font-medium text-lg">Your Loan EMI payment of ₹{parseFloat(formData.amount).toLocaleString()} was successful.</p>
+                              <h4 className="text-3xl font-black text-slate-900 tracking-tight">EMI Payment Successfully!</h4>
+                              <p className="text-slate-500 font-medium text-lg">Your payment of ₹{parseFloat(formData.amount).toLocaleString()} was processed securely.</p>
                             </div>
                             <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 text-left space-y-4">
                               <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Loan ID</span>
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Loan Reference</span>
                                 <span className="font-bold text-slate-900">{formData.refNum}</span>
                               </div>
                               <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Account</span>
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Paid From Account</span>
                                 <span className="font-mono font-bold text-slate-900">{formData.fromAccount}</span>
                               </div>
                               <div className="flex justify-between items-center">
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Receipt ID</span>
-                                <span className="font-mono font-bold text-slate-900">EMI{Math.floor(Math.random() * 90000000 + 10000000)}</span>
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Transaction ID</span>
+                                <span className="font-mono font-bold text-slate-900">EMI-TX-{Math.floor(Math.random() * 90000000 + 10000000)}</span>
                               </div>
                             </div>
                             <button 
@@ -1960,7 +2413,7 @@ export default function SecureDashboard() {
                               onClick={closeModal}
                               className="w-full h-16 bg-slate-900 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-sm"
                             >
-                              Done
+                              Return to Dashboard
                             </button>
                           </div>
                         )}
@@ -1969,53 +2422,113 @@ export default function SecureDashboard() {
 
                   {/* SPECIAL FLOW: Credit Card Bill Payment */}
                   {formData.billCategory === 'credit-card' && (() => {
-                    const showCcAmountFields = formData.refNum?.length === 16 && formData.cardHolder && formData.bankName;
+                    const showCcAmountFields = fetchedCard && formData.refNum?.replace(/\s/g, '').length === 16;
                     const isCustomAmount = formData.ccAmountOption === 'custom';
-                    const isAmountBelowMin = isCustomAmount && parseFloat(formData.amount || 0) < MOCK_CC_DETAILS.minDue;
                     
+                    // Real data from fetchedCard
+                    const outstanding = fetchedCard ? (fetchedCard.limit * 0.25) : 0; // Assuming 25% of limit is due
+                    const minDue = outstanding * 0.05; // 5% of outstanding
+                    const totalDue = outstanding;
+                    const dueDate = fetchedCard ? "15-Apr-2026" : "N/A"; // Mock due date for now
+                    
+                    const isAmountBelowMin = isCustomAmount && parseFloat(formData.amount || 0) < minDue;
+                    
+                    const handleCCPayment = async () => {
+                      if (!formData.fromAccount) {
+                        setFormError('Please select a source account to pay from.');
+                        return;
+                      }
+                      const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+                      if (!sourceAccount || sourceAccount.balance < parseFloat(formData.amount || 0)) {
+                        setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
+                        return;
+                      }
+                      if (formData.refNum?.replace(/\s/g, '').length !== 16) {
+                        setFormError('Credit card number must be 16 digits.');
+                        return;
+                      }
+                      if (!formData.amount) {
+                        setFormError('Please enter a payment amount.');
+                        return;
+                      }
+                      if (isAmountBelowMin) {
+                        setFormError(`Custom payment must be at least ₹${minDue.toLocaleString()}.`);
+                        return;
+                      }
+                      
+                      setFormError('');
+                      setSubmitting(true);
+                      
+                      // Process payment (mock for now, but could be a real transaction)
+                      setTimeout(() => {
+                        setSubmitting(false);
+                        setCcPaymentStatus('success');
+                        setCcStep(2);
+                        // Add request to history
+                        const userName = `${userProfile?.firstName || 'User'} ${userProfile?.lastName || ''}`.trim();
+                        addRequest({
+                          userId: userProfile?.uid,
+                          userName,
+                          type: 'Credit Card Bill Payment',
+                          category: 'payment',
+                          details: {
+                            ...formData,
+                            bankName: 'SmartBank',
+                            billCategory: 'credit-card',
+                            cardType: fetchedCard.cardType
+                          },
+                          status: 'approved'
+                        });
+                      }, 2000);
+                    };
+
                     return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                       {/* Step 1: CC Details Form */}
                       {ccStep === 1 && (
                         <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <Input 
-                              label="Credit Card Number" 
-                              name="refNum" 
-                              maxLength="16"
-                              placeholder="XXXX XXXX XXXX XXXX" 
-                              onChange={handleInputChange} 
-                              value={formData.refNum || ''} 
-                              required 
-                            />
+                            <div className="flex gap-4 items-end">
+                              <div className="flex-1">
+                                <Input 
+                                  label="Credit Card Number" 
+                                  name="refNum" 
+                                  maxLength="19"
+                                  placeholder="XXXX XXXX XXXX XXXX" 
+                                  onChange={handleInputChange} 
+                                  value={formData.refNum || ''} 
+                                  required 
+                                />
+                              </div>
+                              <button 
+                                type="button"
+                                onClick={() => handleFetchCard(formData.refNum)}
+                                disabled={checkingBill || !formData.refNum || formData.refNum.replace(/\s/g, '').length !== 16}
+                                className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
+                              >
+                                {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
+                              </button>
+                            </div>
                             <Input 
                               label="Card Holder Name" 
                               name="cardHolder" 
-                              placeholder="As on card" 
-                              onChange={handleInputChange} 
-                              value={formData.cardHolder || ''} 
+                              placeholder="Fetching holder name..." 
+                              value={fetchedCard?.userName || ''} 
+                              readOnly
                               required 
                             />
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                              <label className="label">Bank Name</label>
-                              <select 
-                                name="bankName" 
-                                onChange={handleInputChange} 
-                                value={formData.bankName || ''} 
-                                className="input" 
-                                required
-                              >
-                                <option value="">Select Bank</option>
-                                {CC_BANKS.map(bank => (
-                                  <option key={bank} value={bank}>{bank}</option>
-                                ))}
-                              </select>
-                            </div>
-                            {showCcAmountFields && (
-                              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                          {showCcAmountFields && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
+                              <div className="space-y-2">
+                                <label className="label">Bank Name</label>
+                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                                  <Landmark className="w-4 h-4 text-blue-600" />
+                                  <span className="text-sm font-black text-slate-900">SmartBank (Internal)</span>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
                                 <label className="label">Amount to Pay (₹)</label>
                                 <div className="relative">
                                   <input 
@@ -2030,13 +2543,13 @@ export default function SecureDashboard() {
                                   />
                                   {isAmountBelowMin && (
                                     <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
-                                      Min ₹{MOCK_CC_DETAILS.minDue.toLocaleString()} required
+                                      Min ₹{minDue.toLocaleString()} required
                                     </p>
                                   )}
                                 </div>
                               </div>
-                            )}
-                          </div>
+                            </div>
+                          )}
 
                           {showCcAmountFields && (
                             <>
@@ -2044,11 +2557,11 @@ export default function SecureDashboard() {
                               <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
                                 <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
                                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
-                                  <p className="text-sm font-black text-slate-900">₹{MOCK_CC_DETAILS.outstanding.toLocaleString()}</p>
+                                  <p className="text-sm font-black text-slate-900">₹{outstanding.toLocaleString()}</p>
                                 </div>
                                 <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
                                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
-                                  <p className="text-sm font-black text-rose-500">{MOCK_CC_DETAILS.dueDate}</p>
+                                  <p className="text-sm font-black text-rose-500">{dueDate}</p>
                                 </div>
                               </div>
 
@@ -2057,8 +2570,8 @@ export default function SecureDashboard() {
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Payment Option</label>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                   {[
-                                    { id: 'total', label: 'Total Amount', value: MOCK_CC_DETAILS.totalAmount },
-                                    { id: 'min', label: 'Minimum Due', value: MOCK_CC_DETAILS.minDue },
+                                    { id: 'total', label: 'Total Amount', value: totalDue },
+                                    { id: 'min', label: 'Minimum Due', value: minDue },
                                     { id: 'custom', label: 'Custom Amount', value: '' }
                                   ].map((option) => (
                                     <label 
@@ -2071,14 +2584,21 @@ export default function SecureDashboard() {
                                     >
                                       <div className="flex flex-col">
                                         <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{option.label}</span>
-                                        {option.value && <span className="text-xs font-bold text-blue-600">₹{option.value.toLocaleString()}</span>}
+                                        {option.value !== '' && <span className="text-xs font-bold text-blue-600">₹{option.value.toLocaleString()}</span>}
                                       </div>
                                       <input 
                                         type="radio" 
                                         name="ccAmountOption" 
                                         value={option.id} 
                                         checked={formData.ccAmountOption === option.id}
-                                        onChange={handleInputChange}
+                                        onChange={(e) => {
+                                          const { value } = e.target;
+                                          setFormData(prev => ({
+                                            ...prev,
+                                            ccAmountOption: value,
+                                            amount: value === 'total' ? totalDue : (value === 'min' ? minDue : '')
+                                          }));
+                                        }}
                                         className="hidden"
                                       />
                                       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
@@ -2103,37 +2623,7 @@ export default function SecureDashboard() {
                             </button>
                             <button 
                               type="button" 
-                              onClick={() => {
-                                if (!formData.fromAccount) {
-                                  setFormError('Please select a source account to pay from.');
-                                  return;
-                                }
-                                const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
-                                if (!sourceAccount || sourceAccount.balance < parseFloat(formData.amount || 0)) {
-                                  setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
-                                  return;
-                                }
-                                if (formData.refNum?.length !== 16) {
-                                  setFormError('Credit card number must be 16 digits.');
-                                  return;
-                                }
-                                if (!formData.cardHolder || !formData.bankName || !formData.amount) {
-                                  setFormError('Please fill in all required fields.');
-                                  return;
-                                }
-                                if (isAmountBelowMin) {
-                                  setFormError(`Custom payment must be at least ₹${MOCK_CC_DETAILS.minDue.toLocaleString()}.`);
-                                  return;
-                                }
-                                setFormError('');
-                                setSubmitting(true);
-                                // Simulate direct payment processing
-                                setTimeout(() => {
-                                  setSubmitting(false);
-                                  setCcPaymentStatus('success');
-                                  setCcStep(2);
-                                }, 2000);
-                              }}
+                              onClick={handleCCPayment}
                               disabled={submitting || !showCcAmountFields || isAmountBelowMin || !formData.fromAccount}
                               className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
                             >
@@ -2158,7 +2648,7 @@ export default function SecureDashboard() {
                               <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 text-left space-y-4">
                                 <div className="flex justify-between items-center border-b border-slate-200 pb-4">
                                   <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Bank</span>
-                                  <span className="font-bold text-slate-900">{formData.bankName}</span>
+                                  <span className="font-bold text-slate-900">SmartBank</span>
                                 </div>
                                 <div className="flex justify-between items-center border-b border-slate-200 pb-4">
                                   <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Card</span>
@@ -2174,7 +2664,7 @@ export default function SecureDashboard() {
                                 onClick={closeModal}
                                 className="w-full h-16 bg-slate-900 text-white font-black rounded-2xl shadow-xl transition-all uppercase tracking-widest text-sm"
                               >
-                                Done
+                                Return to Dashboard
                               </button>
                             </>
                           ) : (
@@ -2662,6 +3152,68 @@ export default function SecureDashboard() {
             </>
           )}
         </form>
+      </Modal>
+
+      {/* Loan Details Modal */}
+      <Modal 
+        isOpen={!!selectedLoan} 
+        onClose={() => setSelectedLoan(null)} 
+        title={`${selectedLoan?.purpose} Loan Details`}
+      >
+        {selectedLoan && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining Balance</p>
+                <p className="text-xl font-black text-slate-900">₹{parseFloat(selectedLoan.remainingBalance || 0).toLocaleString()}</p>
+              </div>
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Paid</p>
+                <p className="text-xl font-black text-emerald-600">₹{parseFloat(selectedLoan.paidAmount || 0).toLocaleString()}</p>
+              </div>
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly EMI</p>
+                <p className="text-xl font-black text-blue-600">₹{parseFloat(selectedLoan.emi || 0).toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-6 px-2">EMI Repayment Schedule</h4>
+              <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Month</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Due Date</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {selectedLoan.emiSchedule?.map((emi) => (
+                      <tr key={emi.month} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-slate-900">Month {emi.month}</td>
+                        <td className="px-6 py-4 text-xs font-medium text-slate-500">{new Date(emi.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                        <td className="px-6 py-4 font-black text-slate-900">₹{parseFloat(emi.amount).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right">
+                          <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                            emi.status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                          }`}>
+                            {emi.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            <div className="pt-4">
+              <Button onClick={() => setSelectedLoan(null)} className="w-full h-14 rounded-2xl font-black uppercase tracking-widest">Close Details</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Account Details Modal */}

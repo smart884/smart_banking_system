@@ -40,13 +40,36 @@ export const AuthProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [requests, setRequests] = useState([]);
-  const [serviceRequests, setServiceRequests] = useState([]); // Added for ServiceRequest_tbl
-  const [cards, setCards] = useState([]); // Added for Card_tbl
+  const [requests, setRequests] = useState(() => {
+    const saved = localStorage.getItem('sb_requests');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [serviceRequests, setServiceRequests] = useState(() => {
+    const saved = localStorage.getItem('sb_service_requests');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [cards, setCards] = useState(() => {
+    const saved = localStorage.getItem('sb_cards');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [loans, setLoans] = useState(() => {
+    const saved = localStorage.getItem('sb_loans');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [transactions, setTransactions] = useState(() => {
+    const saved = localStorage.getItem('sb_transactions');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [allUsers, setAllUsers] = useState([]);
   const [systemSettings, setSystemSettings] = useState(null);
-  const [userAccounts, setUserAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [userAccounts, setUserAccounts] = useState(() => {
+    const saved = localStorage.getItem('sb_user_accounts');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    // If we have a profile in localStorage, don't show the global loading screen
+    return !localStorage.getItem('sb_static_user');
+  });
 
   // 1. Listen for Auth Changes & Firestore Real-time Updates
   useEffect(() => {
@@ -167,6 +190,7 @@ export const AuthProvider = ({ children }) => {
         });
       });
       setRequests(fetchedRequests);
+      localStorage.setItem('sb_requests', JSON.stringify(fetchedRequests));
       console.log(`[Firebase] Synced ${fetchedRequests.length} requests for ${role || 'user'} ${userProfile.uid} 🔥`);
     });
 
@@ -185,6 +209,7 @@ export const AuthProvider = ({ children }) => {
           fetched.push({ id: doc.id, ...data, createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString() });
         });
         setServiceRequests(fetched);
+        localStorage.setItem('sb_service_requests', JSON.stringify(fetched));
         console.log(`[Firebase] Synced ${fetched.length} service requests for role: ${role} 🔥`);
       },
       (error) => {
@@ -197,13 +222,48 @@ export const AuthProvider = ({ children }) => {
     const unsubscribeCards = onSnapshot(query(cardsRef, where('userId', '==', userProfile.uid)), (snapshot) => {
       const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setCards(fetched);
+      localStorage.setItem('sb_cards', JSON.stringify(fetched));
       console.log(`[Firebase] Synced ${fetched.length} cards for user ${userProfile.uid} 🔥`);
+    });
+
+    // Listen for Loan_tbl (Approved Loans)
+    const loansRef = collection(db, 'Loan_tbl');
+    const unsubscribeLoans = onSnapshot(query(loansRef, where('userId', '==', userProfile.uid)), (snapshot) => {
+      const fetched = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        startDate: doc.data().startDate?.toDate?.()?.toISOString() || new Date().toISOString()
+      }));
+      setLoans(fetched);
+      localStorage.setItem('sb_loans', JSON.stringify(fetched));
+      console.log(`[Firebase] Synced ${fetched.length} loans for user ${userProfile.uid} 🔥`);
+    });
+
+    // Listen for Transactions
+    const transactionsRef = collection(db, 'transactions');
+    const qTransactions = query(
+      transactionsRef, 
+      where('userId', '==', userProfile.uid),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
+      const fetched = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        timestamp: doc.data().timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+      }));
+      setTransactions(fetched);
+      localStorage.setItem('sb_transactions', JSON.stringify(fetched));
+      console.log(`[Firebase] Synced ${fetched.length} transactions for user ${userProfile.uid} 🔥`);
     });
 
     return () => {
       unsubscribe();
       unsubscribeService();
       unsubscribeCards();
+      unsubscribeLoans();
+      unsubscribeTransactions();
     };
   }, [userProfile?.uid, userProfile?.role]);
 
@@ -220,6 +280,7 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedAccounts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUserAccounts(fetchedAccounts);
+      localStorage.setItem('sb_user_accounts', JSON.stringify(fetchedAccounts));
       console.log(`[Firebase] Synced ${fetchedAccounts.length} accounts for user ${userProfile.uid} 🔥`);
     });
 
@@ -267,8 +328,17 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     await signOut(firebaseAuth);
     setUserProfile(null);
-    localStorage.removeItem('sb_static_user');
-    localStorage.removeItem('sb_is_logged');
+    const keysToRemove = [
+      'sb_static_user', 
+      'sb_is_logged', 
+      'sb_requests', 
+      'sb_service_requests', 
+      'sb_cards', 
+      'sb_loans', 
+      'sb_transactions', 
+      'sb_user_accounts'
+    ];
+    keysToRemove.forEach(k => localStorage.removeItem(k));
   };
 
   const addRequest = async (req) => {
@@ -337,7 +407,12 @@ export const AuthProvider = ({ children }) => {
             await generateCreditCard(data);
           }
           
-          // 2. Update User Profile if it's a KYC Update
+          // 2. Generate Loan if it's a loan request
+          if (data.type?.toLowerCase()?.includes('loan')) {
+            await generateLoan(data);
+          }
+          
+          // 3. Update User Profile if it's a KYC Update
           if (data.type === 'KYC Update' || data.type === 'KYC Document Update') {
             await updateUserProfileFromKYC(data);
           }
@@ -375,6 +450,59 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.error("[Compliance] User profile update failed:", err);
+    }
+  };
+
+  const generateLoan = async (request) => {
+    try {
+      const loanId = `L-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const loanData = {
+        loanId,
+        userId: request.userId,
+        userName: request.userName || 'User',
+        accountNumber: request.accountNumber || '',
+        loanAmount: parseFloat(request.loanAmount || 0),
+        tenure: parseInt(request.tenure || 12),
+        emi: parseFloat(request.emi || 0),
+        interestRate: request.interestRate || '10.5%',
+        totalPayable: parseFloat(request.totalPayable || 0),
+        remainingBalance: parseFloat(request.totalPayable || 0),
+        paidAmount: 0,
+        status: 'Active',
+        startDate: serverTimestamp(),
+        purpose: request.purpose || 'Personal',
+        emiSchedule: Array.from({ length: parseInt(request.tenure || 12) }, (_, i) => {
+          const dueDate = new Date();
+          dueDate.setMonth(dueDate.getMonth() + i + 1);
+          dueDate.setDate(1); // Set to 1st of each month for consistent due dates
+          return {
+            month: i + 1,
+            amount: parseFloat(request.emi || 0),
+            status: 'Pending',
+            dueDate: dueDate.toISOString()
+          };
+        })
+      };
+
+      await addDoc(collection(db, 'Loan_tbl'), loanData);
+      console.log(`[Banking] New Loan generated for ${request.userId} ✅`);
+      
+      // Also credit the amount to the user's account
+      if (request.accountNumber) {
+        const q = query(collection(db, 'accounts'), where('accountNumber', '==', request.accountNumber));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const accountDoc = snapshot.docs[0];
+          const currentBalance = parseFloat(accountDoc.data().balance || 0);
+          await updateDoc(doc(db, 'accounts', accountDoc.id), {
+            balance: currentBalance + parseFloat(request.loanAmount || 0),
+            lastTransactionDate: serverTimestamp()
+          });
+          console.log(`[Banking] Loan amount ₹${request.loanAmount} credited to ${request.accountNumber} ✅`);
+        }
+      }
+    } catch (err) {
+      console.error("[Banking] Loan generation failed:", err);
     }
   };
 
@@ -511,6 +639,67 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const performTransfer = async (transferData) => {
+    try {
+      const { fromAccountId, toAccountNumber, amount, remark } = transferData;
+      
+      // 1. Check sender balance
+      const senderRef = doc(db, 'accounts', fromAccountId);
+      const senderSnap = await getDoc(senderRef);
+      if (!senderSnap.exists()) throw new Error('Sender account not found');
+      const senderData = senderSnap.data();
+      if (senderData.balance < amount) throw new Error('Insufficient balance');
+
+      // 2. Find recipient account
+      const accountsRef = collection(db, 'accounts');
+      const q = query(accountsRef, where('accountNumber', '==', toAccountNumber));
+      const recipientSnap = await getDocs(q);
+      if (recipientSnap.empty) throw new Error('Recipient account not found');
+      const recipientDoc = recipientSnap.docs[0];
+      const recipientRef = doc(db, 'accounts', recipientDoc.id);
+      const recipientData = recipientDoc.data();
+
+      // 3. Update balances
+      await updateDoc(senderRef, { balance: senderData.balance - amount });
+      await updateDoc(recipientRef, { balance: recipientData.balance + amount });
+
+      // 4. Record transactions
+      const timestamp = serverTimestamp();
+      
+      // Sender's record (Debit)
+      await addDoc(collection(db, 'transactions'), {
+        userId: userProfile.uid,
+        userName: `${userProfile.firstName} ${userProfile.lastName}`,
+        type: 'Transfer',
+        category: 'Debit',
+        amount: -amount,
+        fromAccount: senderData.accountNumber,
+        toAccount: toAccountNumber,
+        remark: remark || 'Fund Transfer',
+        timestamp
+      });
+
+      // Recipient's record (Credit)
+      await addDoc(collection(db, 'transactions'), {
+        userId: recipientData.userId,
+        userName: recipientData.userName || 'Unknown',
+        type: 'Transfer',
+        category: 'Credit',
+        amount: amount,
+        fromAccount: senderData.accountNumber,
+        toAccount: toAccountNumber,
+        remark: remark || 'Fund Transfer Received',
+        timestamp
+      });
+
+      console.log(`[Banking] Transfer successful: ₹${amount} from ${senderData.accountNumber} to ${toAccountNumber} ✅`);
+      return { success: true };
+    } catch (err) {
+      console.error("[Banking] Transfer failed:", err);
+      return { success: false, message: err.message };
+    }
+  };
+
   const value = {
     currentUser: userProfile,
     userProfile,
@@ -520,12 +709,15 @@ export const AuthProvider = ({ children }) => {
     requests,
     serviceRequests,
     cards,
+    loans,
+    transactions,
     userAccounts,
     addRequest, 
         addCreditCardRequest,
         updateRequestStatus,
         updateServiceRequestStatus,
         initializeServiceMaster,
+    performTransfer,
     allUsers,
     systemSettings,
     updateSystemSettings: async (newSettings) => {
@@ -574,6 +766,146 @@ export const AuthProvider = ({ children }) => {
         category: 'account',
         details: { fullName: 'Rahul Demo', deposit: '1000' }
       });
+    },
+    fetchLoanById: async (loanId) => {
+      try {
+        const cleanId = loanId.trim().toUpperCase();
+        console.log(`[Banking] Searching for Loan ID: ${cleanId}...`);
+        
+        // 1. Search by loanId field
+        const q = query(collection(db, 'Loan_tbl'), where('loanId', '==', cleanId));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          console.log(`[Banking] Loan found by loanId field ✅`);
+          return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        }
+
+        // 2. Fallback: Search by document ID (if it's a direct Firestore ID)
+        // Note: Firestore IDs are case-sensitive and usually not prefixed with L-
+        // but we check just in case the user provided a raw ID.
+        const docRef = doc(db, 'Loan_tbl', loanId.trim());
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          console.log(`[Banking] Loan found by Document ID ✅`);
+          return { id: docSnap.id, ...docSnap.data() };
+        }
+
+        console.warn(`[Banking] No loan found for ID: ${cleanId}`);
+        return null;
+      } catch (err) {
+        console.error("Error fetching loan by ID:", err);
+        return null;
+      }
+    },
+    payLoanEMI: async (loanId, amount, fromAccountNum) => {
+      try {
+        const cleanId = loanId.trim().toUpperCase();
+        // 1. Get Loan
+        const q = query(collection(db, 'Loan_tbl'), where('loanId', '==', cleanId));
+        let snapshot = await getDocs(q);
+        
+        let loanDoc, loanData, loanRef;
+        if (!snapshot.empty) {
+          loanDoc = snapshot.docs[0];
+          loanData = loanDoc.data();
+          loanRef = doc(db, 'Loan_tbl', loanDoc.id);
+        } else {
+          // Fallback to document ID
+          const docRef = doc(db, 'Loan_tbl', loanId.trim());
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            loanDoc = docSnap;
+            loanData = docSnap.data();
+            loanRef = docRef;
+          } else {
+            throw new Error("Loan not found");
+          }
+        }
+
+        // 2. Get Account
+        const accQ = query(collection(db, 'accounts'), where('accountNumber', '==', fromAccountNum));
+        const accSnapshot = await getDocs(accQ);
+        if (accSnapshot.empty) throw new Error("Source account not found");
+        
+        const accDoc = accSnapshot.docs[0];
+        const accData = accDoc.data();
+        const accRef = doc(db, 'accounts', accDoc.id);
+
+        if (accData.balance < amount) throw new Error("Insufficient balance");
+
+        // 3. Update Balance
+        await updateDoc(accRef, {
+          balance: accData.balance - amount,
+          lastTransactionDate: serverTimestamp()
+        });
+
+        // 4. Update Loan
+        const newRemaining = Math.max(0, loanData.remainingBalance - amount);
+        const newPaidAmount = (loanData.paidAmount || 0) + amount;
+        
+        // Find next pending EMI and mark as paid
+        let markedPaid = false;
+        const newSchedule = (loanData.emiSchedule || []).map(item => {
+          if (!markedPaid && item.status === 'Pending' && amount >= item.amount) {
+            markedPaid = true;
+            return { ...item, status: 'Paid', paidAt: new Date().toISOString() };
+          }
+          return item;
+        });
+
+        await updateDoc(loanRef, {
+          remainingBalance: newRemaining,
+          paidAmount: newPaidAmount,
+          emiSchedule: newSchedule,
+          lastPaymentDate: serverTimestamp()
+        });
+
+        // 5. Record Transaction
+        await addDoc(collection(db, 'user_requests'), {
+          userId: userProfile.uid,
+          userName: `${userProfile.firstName} ${userProfile.lastName}`,
+          type: 'Loan EMI Payment',
+          category: 'payment',
+          status: 'approved',
+          createdAt: serverTimestamp(),
+          details: {
+            fromAccount: fromAccountNum,
+            loanId: loanId,
+            amount: amount,
+            billCategory: 'loan-emi'
+          }
+        });
+
+        return { success: true };
+      } catch (err) {
+        console.error("EMI Payment failed:", err);
+        return { success: false, message: err.message };
+      }
+    },
+    fetchCardByNumber: async (cardNumber) => {
+      try {
+        if (!cardNumber) return null;
+        const cleanNumber = cardNumber.replace(/\D/g, ''); // Extract only digits
+        if (cleanNumber.length === 0) return null;
+        
+        // Format to XXXX XXXX XXXX XXXX as it's stored in DB
+        const parts = cleanNumber.match(/.{1,4}/g);
+        const formattedNumber = parts ? parts.join(' ') : cleanNumber;
+        
+        console.log(`[Banking] Searching for Card: ${formattedNumber}...`);
+        const q = query(collection(db, 'Card_tbl'), where('cardNumber', '==', formattedNumber));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          console.log(`[Banking] Card found ✅`);
+          return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        }
+        console.warn(`[Banking] No card found for number: ${formattedNumber}`);
+        return null;
+      } catch (err) {
+        console.error("Error fetching card by number:", err);
+        return null;
+      }
     }
   };
 

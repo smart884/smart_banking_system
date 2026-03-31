@@ -15,6 +15,9 @@ import ApplyPersonalLoan from './pages/ApplyPersonalLoan';
 import ApplyKYC from './pages/ApplyKYC';
 import PendingStatus from './pages/PendingStatus';
 import SecureDashboard from './pages/SecureDashboard';
+import Transactions from './pages/Transactions';
+import Accounts from './pages/Accounts';
+import Payments from './pages/Payments';
 import ClerkDashboard from './pages/ClerkDashboard';
 import ManagerDashboard from './pages/ManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -27,7 +30,17 @@ import Unauthorized from './pages/Unauthorized';
 const ProtectedRoute = ({ children, roles }) => {
   const { userProfile, loading } = useAuth();
   
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium tracking-tight">Verifying Secure Session...</p>
+        </div>
+      </div>
+    );
+  }
+  
   if (!userProfile) return <Navigate to="/login" replace />;
   
   if (roles && !roles.includes(userProfile.role)) {
@@ -93,6 +106,24 @@ export default function App() {
         <Route path="/user/dashboard" element={
           <ProtectedRoute roles={['customer']}>
             <SecureDashboard />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/transactions" element={
+          <ProtectedRoute roles={['customer']}>
+            <Transactions />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/accounts" element={
+          <ProtectedRoute roles={['customer']}>
+            <Accounts />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/payments" element={
+          <ProtectedRoute roles={['customer']}>
+            <Payments />
           </ProtectedRoute>
         } />
 

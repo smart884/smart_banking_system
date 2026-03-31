@@ -17,7 +17,9 @@ import {
   X,
   RefreshCcw,
   CreditCard,
-  Landmark
+  Landmark,
+  Clock,
+  IndianRupee
 } from 'lucide-react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/ui/Modal';
@@ -32,13 +34,13 @@ export default function ClerkDashboard() {
   const { 
     userProfile, 
     logout, 
-    requests, 
-    serviceRequests, 
+    requests = [], 
+    serviceRequests = [], 
     updateRequestStatus, 
     updateServiceRequestStatus, // Renamed
     clearRequests, 
     populateDemoData, 
-    allUsers 
+    allUsers = [] 
   } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
@@ -51,17 +53,17 @@ export default function ClerkDashboard() {
 
   // Banking Workflow Filter: Clerks see 'pending_clerk' or 'pending'
   const accountRequests = requests.filter(r => 
-    (r.category === 'account' && (r.status === 'pending_clerk' || r.status === 'pending')) ||
-    (r.status === 'clerk_approved' || r.status === 'manager_approved' || r.status === 'approved' || r.status === 'rejected')
+    r.category === 'account' && (r.status === 'pending_clerk' || r.status === 'pending' || r.status === 'clerk_approved' || r.status === 'manager_approved' || r.status === 'approved' || r.status === 'rejected')
   );
   
-  const generalServiceRequests = requests.filter(r => 
-    r.category === 'service' || 
-    r.type.toLowerCase().includes('loan') || 
-    r.type.toLowerCase().includes('card') || 
-    r.type.toLowerCase().includes('transfer') ||
-    r.type.toLowerCase().includes('bill')
-  );
+  const generalServiceRequests = [
+    ...requests.filter(r => r.category === 'service'),
+    ...serviceRequests
+  ];
+
+  const cardRequests = serviceRequests.filter(r => r.type?.toLowerCase().includes('card'));
+  const loanRequests = serviceRequests.filter(r => r.type?.toLowerCase().includes('loan'));
+  const kycRequests = serviceRequests.filter(r => r.type?.toLowerCase().includes('kyc'));
 
   const handleClearAll = () => {
     if (window.confirm("Are you sure you want to CLEAR ALL requests? This will delete everything from the terminal.")) {
@@ -117,7 +119,7 @@ export default function ClerkDashboard() {
       
       if (status === 'approved') {
         // Verification must be successful first
-        const isVerified = kycResult && (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true);
+        const isVerified = kycResult && kycResult.success;
         
         if (!isVerified) {
           showToast("KYC Verification FAILED! Cannot approve. ❌");
@@ -169,8 +171,57 @@ export default function ClerkDashboard() {
   const handleVerifyKYC = () => {
      if (!selectedReq) return;
      
-     showToast("Documents Verified! Details matching manual check. ✅");
-     setKycResult({ manual: { match: true } });
+     // Find the user profile in our local allUsers state to compare
+     const requesterProfile = allUsers.find(u => u.uid === selectedReq.userId);
+     
+     if (!requesterProfile) {
+       showToast("Requester profile not found in database! ❌");
+       return;
+     }
+
+     const reqDetails = selectedReq.details || selectedReq;
+     
+     // Fields to check
+     const checks = [
+       { 
+         label: 'Aadhaar', 
+         match: (reqDetails.aadhar || reqDetails.aadhaar) === requesterProfile.aadhaar,
+         value: reqDetails.aadhar || reqDetails.aadhaar 
+       },
+       { 
+         label: 'PAN', 
+         match: reqDetails.pan?.toUpperCase() === requesterProfile.pan?.toUpperCase(),
+         value: reqDetails.pan 
+       },
+       { 
+         label: 'Mobile', 
+         match: (reqDetails.mobile || reqDetails.contactNumber) === requesterProfile.contactNumber,
+         value: reqDetails.mobile || reqDetails.contactNumber 
+       },
+       { 
+         label: 'Email', 
+         match: reqDetails.email?.toLowerCase() === requesterProfile.email?.toLowerCase(),
+         value: reqDetails.email 
+       }
+     ];
+
+     const failedChecks = checks.filter(c => !c.match);
+     
+     if (failedChecks.length > 0) {
+       const mismatchDetails = failedChecks.map(c => c.label).join(', ');
+       const remarkMsg = `KYC Verification Failed: The following details do not match our records: ${mismatchDetails}. Please update your profile or re-submit with correct information.`;
+       
+       setRemarks(remarkMsg);
+       setKycResult({ 
+         success: false, 
+         failedFields: failedChecks.map(c => c.label)
+       });
+       showToast(`KYC Mismatch: ${mismatchDetails} ❌`);
+     } else {
+       setKycResult({ success: true });
+       setRemarks("KYC Details Verified: All information matches our database records.");
+       showToast("Documents Verified! All details match database. ✅");
+     }
   };
 
   const renderStats = () => {
@@ -245,19 +296,21 @@ export default function ClerkDashboard() {
           {/* KYC Status Indicator */}
           {kycResult && (
             <div className={`p-4 rounded-2xl flex items-center gap-4 border animate-in slide-in-from-top-2 duration-300 ${
-              (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true)
+              kycResult.success
                 ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
                 : 'bg-rose-50 border-rose-100 text-rose-700'
             }`}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                (Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                kycResult.success ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
               }`}>
-                {(Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                {kycResult.success ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
               </div>
               <div>
                 <p className="text-xs font-black uppercase tracking-widest">KYC Status</p>
                 <p className="text-sm font-bold">
-                  {(Object.values(kycResult).every(v => v.match === true) || kycResult.manual?.match === true) ? 'Verified: Manual review successful' : 'Failed: Data discrepancies detected'}
+                  {kycResult.success 
+                    ? 'Verified: All details match database records' 
+                    : `Mismatch Detected: ${kycResult.failedFields?.join(', ')}`}
                 </p>
               </div>
             </div>
@@ -401,23 +454,35 @@ export default function ClerkDashboard() {
               </td>
               <td className="px-8 py-6">
                 <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
-                  req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' :
-                  req.status === 'rejected' ? 'bg-rose-50 text-rose-600' :
-                  req.status === 'clerk_approved' ? 'bg-blue-50 text-blue-600' :
+                  (req.status === 'approved' || req.status === 'S') ? 'bg-emerald-50 text-emerald-600' :
+                  (req.status === 'rejected' || req.status === 'R') ? 'bg-rose-50 text-rose-600' :
+                  (req.status === 'clerk_approved' || req.status === 'I') ? 'bg-blue-50 text-blue-600' :
                   'bg-amber-50 text-amber-600'
                 }`}>
-                  {req.status === 'clerk_approved' ? 'Clerk Approved' : req.status}
+                  {req.status === 'clerk_approved' ? 'Clerk Approved' : 
+                   req.status === 'S' ? 'Solved (S)' :
+                   req.status === 'I' ? 'In Progress (I)' :
+                   req.status === 'R' ? 'Rejected (R)' :
+                   req.status === 'P' ? 'Pending (P)' : req.status}
                 </span>
               </td>
               <td className="px-8 py-6">
                 <div className="flex items-center gap-2">
                   <button 
-                    onClick={() => { setSelectedReq({ ...req, category: type }); setKycResult(null); setRemarks(''); }}
+                    onClick={() => { 
+                      setSelectedReq({ 
+                        ...req, 
+                        category: type,
+                        details: req.details || req // Ensure details are available
+                      }); 
+                      setKycResult(null); 
+                      setRemarks(''); 
+                    }}
                     className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all"
                   >
                     <Eye size={16} />
                   </button>
-                  {req.status === 'pending' && (
+                  {(req.status === 'pending' || req.status === 'P') && (
                     <>
                       <button 
                         onClick={() => handleAction(req.id, type, 'approved')}
@@ -538,12 +603,9 @@ export default function ClerkDashboard() {
                 <div className="flex items-center gap-4">
                   <div className="px-5 py-2 bg-amber-50 text-amber-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
-                    {serviceRequests.filter(r => {
-                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
-                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
-                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
-                      return false;
-                    }).length} Pending Review
+                    {(location.pathname === '/clerk/credit-cards' ? cardRequests : 
+                      location.pathname === '/clerk/loans' ? loanRequests : kycRequests)
+                      .filter(r => r.status === 'P').length} Pending Review
                   </div>
                   <button onClick={forceRefreshData} className="p-3 rounded-2xl bg-white border border-slate-100 hover:bg-slate-50 transition-all text-slate-400 hover:text-blue-600 shadow-sm"><RefreshCcw size={20} /></button>
                 </div>
@@ -561,19 +623,13 @@ export default function ClerkDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {serviceRequests.filter(r => {
-                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
-                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
-                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
-                      return false;
-                    }).length === 0 ? (
-                      <tr><td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold italic">No pending requests in this terminal.</td></tr>
-                    ) : serviceRequests.filter(r => {
-                      if (location.pathname === '/clerk/credit-cards') return r.type?.toLowerCase().includes('card') && r.status === 'P';
-                      if (location.pathname === '/clerk/loans') return r.type?.toLowerCase().includes('loan') && r.status === 'P';
-                      if (location.pathname === '/clerk/kyc') return r.type?.toLowerCase().includes('kyc') && r.status === 'P';
-                      return false;
-                    }).map((req) => (
+                    {(location.pathname === '/clerk/credit-cards' ? cardRequests : 
+                      location.pathname === '/clerk/loans' ? loanRequests : kycRequests)
+                      .length === 0 ? (
+                      <tr><td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-bold italic">No requests in this section.</td></tr>
+                    ) : (location.pathname === '/clerk/credit-cards' ? cardRequests : 
+                         location.pathname === '/clerk/loans' ? loanRequests : kycRequests)
+                      .map((req) => (
                       <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
                         <td className="px-8 py-6">
                           <div className="flex items-center gap-4">
@@ -721,40 +777,138 @@ export default function ClerkDashboard() {
             </div>
           )}
 
-          {location.pathname === '/clerk/reports' && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="space-y-2">
-                <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Bank Reports</h2>
-                <p className="text-slate-500 font-medium">Statistical analysis of operational efficiency.</p>
-              </div>
-              {renderStats()}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="p-10 bg-white rounded-[40px] border border-slate-100 shadow-xl space-y-8">
-                  <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest">Efficiency Chart</h4>
-                  <div className="space-y-6">
-                    {['Accounts', 'Loans', 'Cards', 'Bills'].map((item, i) => (
-                      <div key={item} className="space-y-2">
-                        <div className="flex justify-between text-xs font-black uppercase tracking-widest">
-                          <span className="text-slate-400">{item}</span>
-                          <span className="text-blue-600">{80 - i * 15}%</span>
+          {location.pathname === '/clerk/reports' && (() => {
+            try {
+              const allReqs = [...(requests || []), ...(serviceRequests || [])];
+              const total = allReqs.length;
+              const pending = allReqs.filter(r => r && ['pending', 'pending_clerk', 'P'].includes(r.status)).length;
+              const approved = allReqs.filter(r => r && ['approved', 'clerk_approved', 'manager_approved', 'S'].includes(r.status)).length;
+              const rejected = allReqs.filter(r => r && ['rejected', 'R'].includes(r.status)).length;
+
+              const getEfficiency = (category) => {
+                const catReqs = allReqs.filter(r => {
+                  if (!r) return false;
+                  if (category === 'Accounts') return r.category === 'account';
+                  if (category === 'Loans') return r.type?.toLowerCase().includes('loan');
+                  if (category === 'Cards') return r.type?.toLowerCase().includes('card');
+                  if (category === 'KYC') return r.type?.toLowerCase().includes('kyc');
+                  return false;
+                });
+                if (catReqs.length === 0) return 0;
+                const solved = catReqs.filter(r => r && ['approved', 'clerk_approved', 'manager_approved', 'S', 'R'].includes(r.status)).length;
+                return Math.round((solved / catReqs.length) * 100);
+              };
+
+              const departments = [
+                { label: 'Accounts', value: getEfficiency('Accounts'), icon: Users, color: 'bg-blue-600' },
+                { label: 'Loans', value: getEfficiency('Loans'), icon: Landmark, color: 'bg-emerald-500' },
+                { label: 'Cards', value: getEfficiency('Cards'), icon: CreditCard, color: 'bg-purple-500' },
+                { label: 'KYC', value: getEfficiency('KYC'), icon: ShieldCheck, color: 'bg-amber-500' },
+              ];
+
+              return (
+                <div className="space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                      <div className="flex items-center gap-3 mb-3 text-blue-600">
+                        <BarChart3 size={20} />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">Operational Intelligence</span>
+                      </div>
+                      <h2 className="text-4xl xl:text-5xl font-black text-slate-900 tracking-tighter">Bank Reports</h2>
+                      <p className="text-slate-500 font-medium text-lg mt-2">Statistical analysis of operational efficiency and terminal load.</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <button onClick={() => window.print()} className="px-6 py-3 bg-white border border-slate-100 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-500 hover:text-blue-600 transition-all shadow-sm">Download PDF</button>
+                      <button onClick={forceRefreshData} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl flex items-center gap-2">
+                        <RefreshCcw size={14} /> Sync Data
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Performance Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    {[
+                      { label: 'Total Volume', value: total, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50' },
+                      { label: 'Pending Terminal', value: pending, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
+                      { label: 'Success Rate', value: `${total > 0 ? Math.round((approved / total) * 100) : 0}%`, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                      { label: 'Rejection Rate', value: `${total > 0 ? Math.round((rejected / total) * 100) : 0}%`, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' },
+                    ].map((stat, i) => (
+                      <div key={i} className="bg-white p-8 rounded-[32px] border border-slate-50 shadow-xl group hover:-translate-y-2 transition-all duration-500">
+                        <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
+                          <stat.icon size={24} />
                         </div>
-                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-600 rounded-full" style={{ width: `${80 - i * 15}%` }} />
-                        </div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
+                        <h3 className="text-3xl font-black text-slate-900">{stat.value}</h3>
                       </div>
                     ))}
                   </div>
-                </div>
-                <div className="p-10 bg-slate-900 rounded-[40px] text-white space-y-6 flex flex-col justify-center text-center">
-                  <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-blue-600/20 mb-4">
-                    <ShieldCheck size={40} />
+
+                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                    {/* Efficiency Chart */}
+                    <div className="lg:col-span-3 bg-white rounded-[48px] p-10 xl:p-12 shadow-2xl border border-slate-50 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-32 bg-slate-50 rounded-full blur-[100px] -mr-16 -mt-16"></div>
+                      <div className="relative z-10">
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-12">Departmental Efficiency</h3>
+                        <div className="space-y-10">
+                          {departments.map((dept, i) => (
+                            <div key={i} className="group cursor-default">
+                              <div className="flex justify-between items-center mb-4">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 ${dept.color.replace('bg-', 'bg-').replace('500', '100').replace('600', '100')} ${dept.color.replace('bg-', 'text-')} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                                    <dept.icon size={18} />
+                                  </div>
+                                  <span className="font-black text-slate-900 uppercase text-[10px] tracking-widest">{dept.label}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-black text-slate-900 block">{dept.value}%</span>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Resolved</span>
+                                </div>
+                              </div>
+                              <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5 shadow-inner">
+                                <div className={`h-full ${dept.color} rounded-full transition-all duration-1000 group-hover:brightness-110 relative`} style={{ width: `${dept.value}%` }}>
+                                  <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent" />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* System Status Card */}
+                    <div className="lg:col-span-2 bg-slate-900 rounded-[48px] p-10 xl:p-12 text-white shadow-2xl relative overflow-hidden group flex flex-col justify-between">
+                      <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+                      <div className="absolute top-0 right-0 p-48 bg-blue-600/20 rounded-full blur-[120px] -mr-24 -mt-24 group-hover:scale-110 transition-transform duration-1000"></div>
+                      
+                      <div className="relative z-10">
+                        <div className="w-20 h-20 bg-blue-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-600/40 mb-8 animate-pulse">
+                          <ShieldCheck size={40} />
+                        </div>
+                        <h3 className="text-3xl font-black tracking-tight mb-4">Terminal Health: Optimal</h3>
+                        <p className="text-slate-400 font-medium leading-relaxed mb-8">
+                          All synchronization protocols are active. Backend databases are matching local state with zero latency detected.
+                        </p>
+                      </div>
+
+                      <div className="relative z-10 p-8 bg-white/5 rounded-[32px] border border-white/10 backdrop-blur-md">
+                        <div className="flex justify-between items-center mb-4">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Uptime</span>
+                          <span className="text-emerald-400 font-black text-xs">99.9%</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Load Factor</span>
+                          <span className="text-blue-400 font-black text-xs">Normal</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <h4 className="text-2xl font-black tracking-tight">System Health: Optimal</h4>
-                  <p className="text-slate-400 font-medium leading-relaxed">All backend processing terminals are synchronized and operating within normal parameters.</p>
                 </div>
-              </div>
-            </div>
-          )}
+              );
+            } catch (err) {
+              console.error("Error rendering reports:", err);
+              return <div className="p-10 text-rose-500 font-bold">Error loading reports. Check terminal logs.</div>;
+            }
+          })()}
         </>
       )}
     </main>

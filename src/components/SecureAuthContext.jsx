@@ -241,18 +241,22 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for Transactions
     const transactionsRef = collection(db, 'transactions');
+    // Simplified query to avoid index requirements for now, filter/sort locally
     const qTransactions = query(
       transactionsRef, 
-      where('userId', '==', userProfile.uid),
-      orderBy('timestamp', 'desc')
+      where('userId', '==', userProfile.uid)
     );
     
     const unsubscribeTransactions = onSnapshot(qTransactions, (snapshot) => {
-      const fetched = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
-      }));
+      const fetched = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          timestamp: data.timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+        };
+      }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      
       setTransactions(fetched);
       localStorage.setItem('sb_transactions', JSON.stringify(fetched));
       console.log(`[Firebase] Synced ${fetched.length} transactions for user ${userProfile.uid} 🔥`);
@@ -629,7 +633,11 @@ export const AuthProvider = ({ children }) => {
         status: 'Active',
         lastTransactionDate: serverTimestamp(),
         createdAt: serverTimestamp(),
-        userName: request.userName
+        userName: request.userName,
+        details: {
+          nomineeName: request.details?.nomineeName || 'Not Specified',
+          nomineeRelation: request.details?.nomineeRelation || 'Not Specified'
+        }
       };
 
       await addDoc(collection(db, 'accounts'), accountData);
@@ -675,6 +683,7 @@ export const AuthProvider = ({ children }) => {
         amount: -amount,
         fromAccount: senderData.accountNumber,
         toAccount: toAccountNumber,
+        recipientName: recipientData.userName || 'Recipient',
         remark: remark || 'Fund Transfer',
         timestamp
       });
@@ -688,6 +697,7 @@ export const AuthProvider = ({ children }) => {
         amount: amount,
         fromAccount: senderData.accountNumber,
         toAccount: toAccountNumber,
+        senderName: `${userProfile.firstName} ${userProfile.lastName}`,
         remark: remark || 'Fund Transfer Received',
         timestamp
       });

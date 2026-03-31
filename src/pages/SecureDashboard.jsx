@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/SecureAuthContext';
 import { useNavigate, Link } from 'react-router-dom';
+import { db } from '../lib/firebaseConfig';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { 
@@ -248,55 +250,48 @@ export default function SecureDashboard() {
     ...userAccounts.map(acc => {
       const accNum = acc.accountNumber;
       
-      // Calculate real-time balance for this official account
-      const totalSent = userRequests
-        .filter(req => (req.category === 'transfer' || req.category === 'payment') && 
-          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(req.status.toLowerCase()) && 
-          req.details?.fromAccount === accNum)
-        .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
-        
-      const totalReceived = userRequests
-        .filter(req => req.category === 'transfer' && 
-          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(req.status.toLowerCase()) && 
-          req.details?.recipient === accNum)
-        .reduce((sum, req) => sum + parseFloat(req.details?.amount || 0), 0);
-
+      // For Official Accounts, we trust the DB balance as the primary source
+      // We don't add/subtract transactions here because performTransfer already updates the DB document
       return {
         id: acc.id,
         accountNumber: accNum,
         accountType: acc.accountType,
-        balance: parseFloat(acc.balance || 0) - totalSent + totalReceived,
+        balance: parseFloat(acc.balance || 0),
         createdAt: acc.createdAt,
         status: 'Active',
         isOfficial: true,
+        details: acc.details || {},
+        nomineeName: acc.nomineeName || acc.details?.nomineeName,
+        nomineeRelation: acc.nomineeRelation || acc.details?.nomineeRelation,
         userName: acc.userName || `${userProfile?.firstName} ${userProfile?.lastName}`
       };
     }),
     ...approvedRequests.map(req => {
       const accNum = getSimulatedAccNum(req.id);
       
-      // Calculate real-time balance for this simulated account
-      const totalSent = userRequests
-        .filter(r => (r.category === 'transfer' || r.category === 'payment') && 
-          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(r.status.toLowerCase()) && 
-          r.details?.fromAccount === accNum)
-        .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
-        
-      const totalReceived = userRequests
-        .filter(r => r.category === 'transfer' && 
-          ['approved', 'pending', 'pending_clerk', 'clerk_approved', 'manager_approved'].includes(r.status.toLowerCase()) && 
-          r.details?.recipient === accNum)
-        .reduce((sum, r) => sum + parseFloat(r.details?.amount || 0), 0);
+      // For Simulated Accounts (not yet in DB 'accounts' collection), 
+      // we must calculate balance from initial deposit + transactions
+      const initialDeposit = parseFloat(req.details?.deposit || 0);
+
+      const totalSentTx = transactions
+        .filter(tx => tx.amount < 0 && tx.fromAccount === accNum)
+        .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+      
+      const totalReceivedTx = transactions
+        .filter(tx => tx.amount >= 0 && tx.toAccount === accNum)
+        .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
       return {
         id: req.id,
         accountNumber: accNum,
         accountType: req.details?.accountType || 'Saving',
-        balance: parseFloat(req.details?.deposit || 0) - totalSent + totalReceived,
+        balance: initialDeposit - totalSentTx + totalReceivedTx,
         createdAt: req.createdAt,
         status: 'Approved',
         isOfficial: false,
-        details: req.details,
+        details: req.details || {},
+        nomineeName: req.nomineeName || req.details?.nomineeName,
+        nomineeRelation: req.nomineeRelation || req.details?.nomineeRelation,
         userName: req.userName || `${userProfile?.firstName} ${userProfile?.lastName}`
       };
     })
@@ -305,7 +300,7 @@ export default function SecureDashboard() {
   // Prepare real transaction history from user requests AND the new transactions collection
   const transactionHistory = [
     ...userRequests
-      .filter(req => ['account', 'transfer', 'payment'].includes(req.category))
+      .filter(req => req.category === 'account') // Monetry movements now primarily from 'transactions'
       .flatMap(req => {
         let amountVal = parseFloat(req.details?.amount || req.details?.deposit || 0);
         let status = req.status === 'pending_clerk' ? 'Clerk Review' : 
@@ -313,8 +308,6 @@ export default function SecureDashboard() {
                      req.status.charAt(0).toUpperCase() + req.status.slice(1);
         
         const entries = [];
-        const userAccountNums = allAccounts.map(a => a.accountNumber);
-
         if (req.category === 'account') {
           entries.push({
             id: `${req.id}-credit`,
@@ -329,80 +322,37 @@ export default function SecureDashboard() {
             toAccountNum: getSimulatedAccNum(req.id),
             category: 'account'
           });
-        } else if (req.category === 'transfer') {
-          const fromAcc = req.details?.fromAccount || 'Unknown';
-          const toAcc = req.details?.recipient || 'Unknown';
-          const isSelfTransfer = userAccountNums.includes(toAcc);
-          
-          // Debit Entry (Money leaving source account)
-          entries.push({
-            id: `${req.id}-debit`,
-            name: `${fromAcc} to ${isSelfTransfer ? toAcc : (req.details?.recipientName || toAcc || 'Unknown')}`,
-            date: formatAccountDate(req.createdAt),
-            rawDate: req.createdAt,
-            amount: `-₹${amountVal.toLocaleString()}`,
-            amountVal,
-            status,
-            icon: '💸',
-            isNegative: true,
-            fromAccountNum: fromAcc,
-            toAccountNum: toAcc,
-            category: 'transfer'
-          });
-
-          // Credit Entry (Money entering destination account if it's mine)
-          if (isSelfTransfer) {
-            entries.push({
-              id: `${req.id}-credit`,
-              name: `${fromAcc} to ${toAcc}`,
-              date: formatAccountDate(req.createdAt),
-              rawDate: req.createdAt,
-              amount: `+₹${amountVal.toLocaleString()}`,
-              amountVal,
-              status,
-              icon: '💸',
-              isNegative: false,
-              fromAccountNum: fromAcc,
-              toAccountNum: toAcc,
-              category: 'transfer'
-            });
-          }
-        } else if (req.category === 'payment') {
-          const fromAcc = req.details?.fromAccount || 'Unknown';
-          const billCat = req.details?.billCategory;
-          const billName = billCat ? `${billCat.charAt(0).toUpperCase() + billCat.slice(1)}` : 'Bill';
-          
-          entries.push({
-            id: `${req.id}-debit`,
-            name: `${fromAcc} to ${billName}`,
-            date: formatAccountDate(req.createdAt),
-            rawDate: req.createdAt,
-            amount: `-₹${amountVal.toLocaleString()}`,
-            amountVal,
-            status,
-            icon: '🧾',
-            isNegative: true,
-            fromAccountNum: fromAcc,
-            category: 'payment'
-          });
         }
-
         return entries;
       }),
-    ...transactions.map(tx => ({
-      id: tx.id,
-      name: tx.remark || tx.type,
-      date: formatAccountDate(tx.timestamp),
-      rawDate: tx.timestamp,
-      amount: `${tx.amount >= 0 ? '+' : '-'}₹${Math.abs(tx.amount).toLocaleString()}`,
-      amountVal: Math.abs(tx.amount),
-      status: 'Approved',
-      icon: tx.amount >= 0 ? '💰' : '💸',
-      isNegative: tx.amount < 0,
-      fromAccountNum: tx.fromAccount,
-      toAccountNum: tx.toAccount,
-      category: tx.type?.toLowerCase() || 'transfer'
-    }))
+    ...transactions.map(tx => {
+      const fromAcc = allAccounts.find(a => a.accountNumber === tx.fromAccount);
+      const toAcc = allAccounts.find(a => a.accountNumber === tx.toAccount);
+      
+      // Label for Sender: Show Account Number + Name
+      const senderName = tx.senderName || fromAcc?.userName || (tx.amount < 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'External');
+      const fromLabel = tx.fromAccount ? `${tx.fromAccount}(${senderName})` : 'External';
+      
+      // Label for Recipient: Show Account Number + Type (or Name if external)
+      const recipientLabel = tx.recipientName || toAcc?.userName || (tx.amount >= 0 ? `${userProfile?.firstName} ${userProfile?.lastName}` : 'System');
+      const recipientType = toAcc?.accountType || 'System';
+      const toLabel = tx.toAccount ? `${tx.toAccount}(${recipientType})` : 'System';
+      
+      return {
+        id: tx.id,
+        name: tx.type === 'Transfer' ? `from ${fromLabel}-to-${toLabel}` : (tx.remark || tx.type),
+        date: formatAccountDate(tx.timestamp),
+        rawDate: tx.timestamp,
+        amount: `${tx.amount >= 0 ? '+' : '-'}₹${Math.abs(tx.amount).toLocaleString()}`,
+        amountVal: Math.abs(tx.amount),
+        status: 'Approved',
+        icon: tx.amount >= 0 ? '💰' : '💸',
+        isNegative: tx.amount < 0,
+        fromAccountNum: tx.fromAccount,
+        toAccountNum: tx.toAccount,
+        category: tx.type?.toLowerCase() || 'transfer'
+      };
+    })
   ].sort((a, b) => {
     const dateA = getDateObject(a.rawDate);
     const dateB = getDateObject(b.rawDate);
@@ -410,16 +360,79 @@ export default function SecureDashboard() {
   });
 
   // Calculate real Inflow and Outflow
+  // We exclude self-transfers (transfers between user's own accounts) for accurate stats
+  const userAccountNums = allAccounts.map(a => a.accountNumber);
+  
   const totalInflow = transactionHistory
     .filter(tx => !tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
+    .filter(tx => !(tx.category === 'transfer' && userAccountNums.includes(tx.fromAccountNum))) // Exclude self-credits
     .reduce((sum, tx) => sum + tx.amountVal, 0);
   
   const totalOutflow = transactionHistory
     .filter(tx => tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
+    .filter(tx => !(tx.category === 'transfer' && userAccountNums.includes(tx.toAccountNum))) // Exclude self-debits
     .reduce((sum, tx) => sum + tx.amountVal, 0);
 
   // Calculate real total balance: Sum of all account balances in allAccounts
   const totalBalance = allAccounts.reduce((sum, acc) => sum + (parseFloat(acc.balance) || 0), 0);
+
+  // --- Dynamic Insights Data Calculation ---
+  
+  // 1. Spending Analysis (Negative Transactions by Category)
+  const spendingByCategory = transactionHistory
+    .filter(tx => tx.isNegative && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status))
+    .reduce((acc, tx) => {
+      let cat = 'Other';
+      if (tx.name.toLowerCase().includes('electricity') || tx.name.toLowerCase().includes('bill')) cat = 'Utilities';
+      else if (tx.name.toLowerCase().includes('recharge') || tx.name.toLowerCase().includes('mobile')) cat = 'Recharge';
+      else if (tx.name.toLowerCase().includes('loan') || tx.name.toLowerCase().includes('emi')) cat = 'Loan EMI';
+      else if (tx.name.toLowerCase().includes('card') || tx.name.toLowerCase().includes('cc')) cat = 'Card Payments';
+      else if (tx.category === 'transfer') cat = 'Transfers';
+      
+      acc[cat] = (acc[cat] || 0) + tx.amountVal;
+      return acc;
+    }, {});
+
+  const totalSpending = Object.values(spendingByCategory).reduce((a, b) => a + b, 0);
+  const spendingAnalysisData = Object.entries(spendingByCategory)
+    .map(([label, amount]) => ({
+      label,
+      amount: `₹${amount.toLocaleString()}`,
+      amountVal: amount,
+      color: label === 'Utilities' ? 'bg-amber-500' : 
+             label === 'Recharge' ? 'bg-purple-500' :
+             label === 'Loan EMI' ? 'bg-rose-500' :
+             label === 'Card Payments' ? 'bg-indigo-600' : 
+             label === 'Transfers' ? 'bg-emerald-500' : 'bg-blue-600',
+      icon: label === 'Utilities' ? <Zap size={14} /> : 
+            label === 'Recharge' ? <Smartphone size={14} /> :
+            label === 'Loan EMI' ? <Briefcase size={14} /> :
+            label === 'Card Payments' ? <CreditCard size={14} /> : 
+            label === 'Transfers' ? <Send size={14} /> : <PieChart size={14} />,
+      width: totalSpending > 0 ? `${(amount / totalSpending) * 100}%` : '0%'
+    }))
+    .sort((a, b) => b.amountVal - a.amountVal);
+
+  // 2. Wealth Growth (Daily Inflow/Outflow for last 7 days)
+  const last7Days = [...Array(7)].map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return d.toLocaleDateString('en-IN', { weekday: 'short' });
+  }).reverse();
+
+  const dailyWealthData = last7Days.map(day => {
+    const dailyTotal = transactionHistory
+      .filter(tx => {
+        const txDate = getDateObject(tx.rawDate).toLocaleDateString('en-IN', { weekday: 'short' });
+        return txDate === day && ['approved', 'Approved', 'Manager Review', 'Clerk Review', 'Pending'].includes(tx.status);
+      })
+      .reduce((sum, tx) => sum + (tx.isNegative ? -tx.amountVal : tx.amountVal), 0);
+    
+    // Map to a height percentage for the bar chart (0-100)
+    // Using a base of 50 as "neutral" and scaling based on activity
+    const height = Math.min(Math.max(40 + (dailyTotal / 1000) * 10, 20), 100); 
+    return { day, height, dailyTotal };
+  });
 
   const handleFetchLoan = async (loanIdToFetch) => {
     const searchId = loanIdToFetch || formData.refNum;
@@ -780,8 +793,24 @@ export default function SecureDashboard() {
             if (!result.success) throw new Error(result.message);
             setTransferSuccess(true);
           } else {
-            // For bill payments, we still use the old request-based system for now
-            // but we could also implement a real deduction here if needed.
+            // Record a transaction for bill payments too!
+            const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+            
+            // We use the same performTransfer logic but to a system "BILLING" account or just record it as a debit
+            // For now, let's just ensure it's recorded in the transactions collection so it shows up in history/stats
+            await addDoc(collection(db, 'transactions'), {
+              userId: userProfile.uid,
+              userName,
+              type: 'Payment',
+              category: 'Debit',
+              amount: -parseFloat(formData.amount),
+              fromAccount: formData.fromAccount,
+              toAccount: formData.billCategory || 'System',
+              remark: `${modal.title}: ${formData.billCategory || 'Bill'}`,
+              timestamp: serverTimestamp()
+            });
+
+            // Still add to user_requests for the "approved" status in the request list
             await addRequest({
               userId: userProfile?.uid,
               userName,
@@ -1244,7 +1273,7 @@ export default function SecureDashboard() {
                           <span className="text-[10px] font-black text-slate-400 uppercase">{formatAccountDate(req.createdAt)}</span>
                         </div>
                         <p className="text-xs font-medium text-slate-500 leading-relaxed">
-                          Your payment of ₹{parseFloat(req.details?.amount || 0).toLocaleString()} is {req.status === 'approved' ? 'successfully processed' : req.status === 'rejected' ? 'declined by bank' : 'under review'}.
+                          Your payment of ₹{parseFloat(req.details?.amount || 0).toLocaleString()} is {req.status === 'approved' ? 'successfully processed' : req.status === 'rejected' ? 'declined by bank' : 'being processed'}.
                         </p>
                         {req.clerkRemark && (
                           <div className="mt-3 p-3 bg-rose-50/50 rounded-xl border-l-2 border-rose-500">
@@ -1261,38 +1290,154 @@ export default function SecureDashboard() {
         );
       case 'analytics':
         return (
-          <div className="space-y-10">
-            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Financial Insights</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="bg-white rounded-[40px] p-10 shadow-xl border border-slate-100">
-                <h3 className="text-xl font-black text-slate-900 mb-8">Spending Analysis</h3>
-                <div className="space-y-6">
-                  {[
-                    { label: 'Shopping', amount: '₹45,000', color: 'bg-blue-600', width: '65%' },
-                    { label: 'Food & Dining', amount: '₹12,400', color: 'bg-emerald-500', width: '25%' },
-                    { label: 'Utilities', amount: '₹8,200', color: 'bg-amber-500', width: '15%' },
-                  ].map((item, i) => (
-                    <div key={i}>
-                      <div className="flex justify-between mb-2">
-                        <span className="font-bold text-slate-900">{item.label}</span>
-                        <span className="font-black text-slate-900">{item.amount}</span>
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-3 mb-3 text-blue-600">
+                  <PieChart size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">Advanced Analytics Engine</span>
+                </div>
+                <h2 className="text-4xl xl:text-5xl font-black text-slate-900 tracking-tighter">Financial Insights</h2>
+                <p className="text-slate-500 font-medium text-lg mt-2">Real-time breakdown of your capital flow and spending habits.</p>
+              </div>
+              <div className="flex gap-4">
+                <button className="px-6 py-3 bg-white border border-slate-100 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-500 hover:text-blue-600 transition-all shadow-sm">Export Report</button>
+                <button className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl">Last 30 Days</button>
+              </div>
+            </div>
+
+            {/* Key Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-white rounded-[40px] p-8 shadow-xl border border-slate-50 group hover:-translate-y-2 transition-all duration-500">
+                <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-6 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-500">
+                  <IndianRupee size={24} />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg. Monthly Spending</p>
+                <h3 className="text-3xl font-black text-slate-900">₹{(totalSpending / (transactionHistory.length > 0 ? 1 : 1)).toLocaleString()}</h3>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-emerald-500 font-black text-[10px]">↓ 8.2%</span>
+                  <span className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">vs Last Month</span>
+                </div>
+              </div>
+              <div className="bg-white rounded-[40px] p-8 shadow-xl border border-slate-50 group hover:-translate-y-2 transition-all duration-500">
+                <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 group-hover:bg-emerald-600 group-hover:text-white transition-colors duration-500">
+                  <CheckCircle2 size={24} />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Savings Efficiency</p>
+                <h3 className="text-3xl font-black text-slate-900">{totalInflow > 0 ? Math.round(((totalInflow - totalOutflow) / totalInflow) * 100) : 0}%</h3>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-blue-600 font-black text-[10px]">Optimal Range</span>
+                  <span className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">Based on Tier</span>
+                </div>
+              </div>
+              <div className="bg-white rounded-[40px] p-8 shadow-xl border border-slate-50 group hover:-translate-y-2 transition-all duration-500">
+                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mb-6 group-hover:bg-amber-600 group-hover:text-white transition-colors duration-500">
+                  <AlertCircle size={24} />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Top Expense Category</p>
+                <h3 className="text-3xl font-black text-slate-900">{spendingAnalysisData[0]?.label || 'None'}</h3>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-rose-500 font-black text-[10px]">Check Bills</span>
+                  <span className="text-slate-400 text-[10px] font-medium uppercase tracking-widest">Manual Review</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+              {/* Spending Analysis */}
+              <div className="lg:col-span-2 bg-white rounded-[48px] p-10 xl:p-12 shadow-2xl border border-slate-50 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-32 bg-slate-50 rounded-full blur-[100px] -mr-16 -mt-16"></div>
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-12">
+                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">Spending Analysis</h3>
+                    <div className="p-3 bg-slate-50 rounded-xl text-slate-400"><PieChart size={20} /></div>
+                  </div>
+                  <div className="space-y-10">
+                    {spendingAnalysisData.length > 0 ? (
+                      spendingAnalysisData.map((item, i) => (
+                        <div key={i} className="group cursor-default">
+                          <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 ${item.color.replace('bg-', 'bg-').replace('500', '100').replace('600', '100')} ${item.color.replace('bg-', 'text-')} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                                {item.icon}
+                              </div>
+                              <span className="font-black text-slate-900 uppercase text-[10px] tracking-widest">{item.label}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-slate-900 block">{item.amount}</span>
+                              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">{Math.round(parseFloat(item.width))}% of Total</span>
+                            </div>
+                          </div>
+                          <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5 shadow-inner">
+                            <div className={`h-full ${item.color} rounded-full transition-all duration-1000 group-hover:brightness-110 relative`} style={{ width: item.width }}>
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent" />
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-32 text-center">
+                        <div className="w-24 h-24 bg-slate-50 rounded-[32px] flex items-center justify-center mx-auto mb-8 text-slate-200">
+                          <PieChart size={48} />
+                        </div>
+                        <p className="text-slate-400 font-black uppercase tracking-widest text-xs italic">No spending data available</p>
                       </div>
-                      <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden">
-                        <div className={`h-full ${item.color} rounded-full`} style={{ width: item.width }} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Wealth Growth */}
+              <div className="lg:col-span-3 bg-slate-900 rounded-[48px] p-10 xl:p-12 text-white shadow-2xl relative overflow-hidden group">
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+                <div className="absolute top-0 right-0 p-48 bg-blue-600/20 rounded-full blur-[120px] -mr-24 -mt-24 group-hover:scale-110 transition-transform duration-1000"></div>
+                
+                <div className="relative z-10 flex items-center justify-between mb-16">
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tight">Wealth Growth</h3>
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Net daily capital movement</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-blue-500 rounded-full" />
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Profit</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <div className="w-2.5 h-2.5 bg-rose-500 rounded-full" />
+                      <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Expense</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-80 flex items-end gap-4 xl:gap-6 relative z-10 px-4">
+                  {dailyWealthData.map((item, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-4 group/bar h-full justify-end">
+                      <div className="opacity-0 group-hover/bar:opacity-100 transition-all duration-300 -translate-y-2 group-hover/bar:translate-y-0 bg-white/10 backdrop-blur-md border border-white/20 px-3 py-2 rounded-xl text-[10px] font-black whitespace-nowrap mb-2 shadow-2xl">
+                        <span className={item.dailyTotal >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {item.dailyTotal >= 0 ? '+' : ''}₹{Math.abs(item.dailyTotal).toLocaleString()}
+                        </span>
                       </div>
+                      <div 
+                        className={`w-full relative ${item.dailyTotal >= 0 ? 'bg-gradient-to-t from-blue-700 to-blue-400 hover:from-blue-600 hover:to-blue-300' : 'bg-gradient-to-t from-rose-700 to-rose-400 hover:from-rose-600 hover:to-rose-300'} rounded-t-2xl xl:rounded-t-[32px] transition-all duration-1000 shadow-2xl cursor-pointer overflow-hidden group/chartbar`} 
+                        style={{ height: `${item.height}%` }} 
+                      >
+                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover/chartbar:opacity-100 transition-opacity" />
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white/30 rounded-full" />
+                      </div>
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest group-hover/bar:text-white transition-colors">{item.day}</span>
                     </div>
                   ))}
                 </div>
-              </div>
-              <div className="bg-slate-900 rounded-[40px] p-10 text-white shadow-2xl">
-                <h3 className="text-xl font-black mb-8">Wealth Growth</h3>
-                <div className="h-48 flex items-end gap-2">
-                  {[40, 60, 45, 80, 55, 90, 70].map((h, i) => (
-                    <div key={i} className="flex-1 bg-blue-500 rounded-t-lg transition-all hover:bg-blue-400 cursor-pointer" style={{ height: `${h}%` }} />
-                  ))}
-                </div>
-                <div className="mt-6 flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                  <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                
+                <div className="mt-12 pt-8 border-t border-white/5 flex items-center justify-between relative z-10">
+                  <div className="flex flex-col">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Weekly Performance</span>
+                    <span className="text-xl font-black text-emerald-400">+₹{dailyWealthData.reduce((s, d) => s + (d.dailyTotal > 0 ? d.dailyTotal : 0), 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col text-right">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Status</span>
+                    <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-tighter border border-white/20 backdrop-blur-sm">Trending Upwards</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1806,11 +1951,12 @@ export default function SecureDashboard() {
                             <span className="text-[10px] font-medium text-slate-400">{formatAccountDate(notif.createdAt)}</span>
                           </div>
                           <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
-                            {notif.status === 'approved' || notif.status === 'S' ? `Your ${notif.type || 'request'} has been fully approved.` :
+                            {(notif.category === 'payment' || notif.category === 'transfer') && (notif.status === 'approved' || notif.status === 'S') ? `Your ${notif.category || 'payment'} for ${notif.type || 'transaction'} has been successfully processed.` :
+                             (notif.status === 'approved' || notif.status === 'S') ? `Your ${notif.type || 'request'} has been fully approved.` :
                              notif.status === 'clerk_approved' ? 'Approved by Clerk, awaiting Manager review.' :
                              notif.status === 'manager_approved' ? 'Final approval granted by Manager.' :
                              notif.status === 'rejected' || notif.status === 'R' ? `Your ${notif.type || 'request'} was declined.` :
-                             'Your request is currently under review.'}
+                             (notif.category === 'payment' || notif.category === 'transfer') ? 'Your transaction is being processed.' : 'Your request is currently under review.'}
                           </p>
                           {(notif.clerkRemark || notif.managerRemark) && (
                             <p className="mt-2 text-[10px] font-black text-rose-500 italic bg-rose-50/50 p-2 rounded-lg border-l-2 border-rose-500">
@@ -3276,11 +3422,15 @@ export default function SecureDashboard() {
               <div className="grid grid-cols-2 gap-8">
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nominee Name</p>
-                  <p className="font-bold text-slate-700">{selectedAccount.details?.nomineeName || 'Not Specified'}</p>
+                  <p className="font-bold text-slate-700">
+                    {selectedAccount.nomineeName || selectedAccount.details?.nomineeName || userProfile?.nomineeName || 'Not Specified'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Relationship</p>
-                  <p className="font-bold text-slate-700">{selectedAccount.details?.nomineeRelation || 'Not Specified'}</p>
+                  <p className="font-bold text-slate-700">
+                    {selectedAccount.nomineeRelation || selectedAccount.details?.nomineeRelation || userProfile?.nomineeRelation || 'Not Specified'}
+                  </p>
                 </div>
               </div>
             </div>

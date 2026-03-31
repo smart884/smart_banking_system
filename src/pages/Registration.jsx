@@ -263,13 +263,8 @@ export default function Registration() {
                         <Input type="date" name="dob" value={formData.dob} onChange={handleChange} required className="h-14 rounded-xl border-slate-200 focus:ring-blue-600/10 focus:border-blue-600 font-medium" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700 uppercase tracking-widest px-1">Account Role</label>
-                        <select name="role" value={formData.role} onChange={handleChange} className="w-full h-14 px-4 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 font-medium text-slate-900">
-                          <option value="customer">Customer</option>
-                          <option value="clerk">Clerk</option>
-                          <option value="manager">Manager</option>
-                          <option value="admin">Admin</option>
-                        </select>
+                        <label className="text-sm font-bold text-slate-700 uppercase tracking-widest px-1">Account Type</label>
+                        <Input value="Savings Account (Customer)" readOnly className="h-14 rounded-xl border-slate-200 bg-slate-50 font-medium text-slate-500 cursor-not-allowed" />
                       </div>
                     </div>
                   </div>

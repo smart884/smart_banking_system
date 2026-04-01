@@ -53,6 +53,19 @@
 .badge-success { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700; }
 .badge-danger { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700; }
 
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-300;
+}
+
 .hero-gradient { @apply bg-gradient-to-r from-blue-700 to-blue-500 text-white; }
 .glow-border { @apply bg-gradient-to-br from-blue-700 to-blue-500 p-[1px] rounded-2xl; }
 .glow-inner { @apply bg-white rounded-2xl p-6 shadow-xl; }

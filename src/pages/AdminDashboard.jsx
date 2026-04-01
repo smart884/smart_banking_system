@@ -17,11 +17,18 @@ import {
   RefreshCcw,
   LogOut,
   Eye,
-  XCircle
+  XCircle,
+  Phone,
+  Mail,
+  Fingerprint,
+  ArrowRight,
+  MapPin,
+  AlertCircle
 } from 'lucide-react';
 import { NavLink, useNavigate, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 
 /**
  * Admin Dashboard System
@@ -44,7 +51,34 @@ export default function AdminDashboard() {
   });
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({ firstName: '', email: '', role: 'customer' });
+  const [newUser, setNewUser] = useState({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    contact: '',
+    altContact: '',
+    aadhaar: '',
+    pan: '',
+    address1: '',
+    address2: '',
+    address3: '',
+    pinCode: '',
+    gender: 'Male',
+    dob: '',
+    role: 'customer',
+    occupation: '',
+    annualIncome: '',
+    nomineeName: '',
+    nomineeRelation: ''
+  });
+
+  const handleNewUserChange = (e) => {
+    const { name, value } = e.target;
+    setNewUser(prev => ({ ...prev, [name]: value }));
+  };
 
   // --- Handlers ---
   const showToast = (message) => {
@@ -59,11 +93,43 @@ export default function AdminDashboard() {
 
   const handleAddUser = async (e) => {
     e.preventDefault();
-    if (!newUser.firstName || !newUser.email) return;
-    await addUser(newUser);
-    setIsAddModalOpen(false);
-    setNewUser({ firstName: '', email: '', role: 'customer' });
-    showToast(`New user ${newUser.firstName} added! 👤`);
+    if (!newUser.firstName || !newUser.lastName || !newUser.email) {
+      showToast("Please fill in mandatory identity fields! ⚠️");
+      return;
+    }
+    
+    setToast("Creating user profile... ⏳");
+    const result = await addUser(newUser);
+    
+    if (result.success) {
+      setIsAddModalOpen(false);
+      setNewUser({
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        contact: '',
+        altContact: '',
+        aadhaar: '',
+        pan: '',
+        address1: '',
+        address2: '',
+        address3: '',
+        pinCode: '',
+        gender: 'Male',
+        dob: '',
+        role: 'customer',
+        occupation: '',
+        annualIncome: '',
+        nomineeName: '',
+        nomineeRelation: ''
+      });
+      showToast(`New user ${newUser.firstName} ${newUser.lastName} added successfully! 👤`);
+    } else {
+      showToast(`Failed: ${result.message} ❌`);
+    }
   };
 
   const handleDeleteUser = async (id) => {
@@ -371,6 +437,7 @@ export default function AdminDashboard() {
               <Bell size={20} />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
+            <button onClick={handleLogout} className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all shadow-sm border border-rose-100"><LogOut size={20} /></button>
             <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 font-bold border border-blue-200">
               {userProfile?.displayName?.[0] || 'A'}
             </div>
@@ -389,51 +456,167 @@ export default function AdminDashboard() {
           isOpen={isAddModalOpen} 
           onClose={() => setIsAddModalOpen(false)}
           title="Add New System User"
+          size="lg"
         >
-          <div className="p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">Add New System User</h2>
-            <form onSubmit={handleAddUser} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                <input 
-                  type="text" 
-                  required
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                  placeholder="e.g. Jane Smith"
-                />
+          <div className="p-2 custom-scrollbar">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-sm">
+                <UserPlus size={24} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
-                <input 
-                  type="email" 
-                  required
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                  placeholder="jane@smartbank.com"
-                />
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Register New System Account</h2>
+                <p className="text-slate-500 text-sm font-medium">Create a new authenticated user profile across all roles.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">System Role</label>
-                <select 
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all bg-white"
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({...newUser, role: e.target.value})}
-                >
-                  <option value="Customer">Customer</option>
-                  <option value="Clerk">Clerk</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-              <div className="flex gap-3 mt-6">
-                <Button type="button" variant="secondary" full onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                <Button type="submit" full>Create User</Button>
-              </div>
-            </form>
-          </div>
+            </div>
+
+            <form onSubmit={handleAddUser} className="space-y-12">
+                {/* 1. Identity Details */}
+                <div className="space-y-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
+                    <h3 className="text-lg font-bold text-slate-900">Identity Details</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">First Name</label>
+                      <Input name="firstName" value={newUser.firstName} onChange={handleNewUserChange} placeholder="First Name" required className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Middle Name</label>
+                      <Input name="middleName" value={newUser.middleName} onChange={handleNewUserChange} placeholder="Middle Name" className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Last Name</label>
+                      <Input name="lastName" value={newUser.lastName} onChange={handleNewUserChange} placeholder="Last Name" required className="h-12 rounded-xl" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Gender</label>
+                      <select name="gender" value={newUser.gender} onChange={handleNewUserChange} className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 font-medium text-slate-900">
+                        <option>Male</option>
+                        <option>Female</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Date of Birth</label>
+                      <Input type="date" name="dob" value={newUser.dob} onChange={handleNewUserChange} required className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Account Role</label>
+                      <select name="role" value={newUser.role} onChange={handleNewUserChange} className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 font-medium text-slate-900">
+                        <option value="customer">Customer</option>
+                        <option value="clerk">Clerk</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Address Details */}
+                <div className="space-y-8 bg-slate-50/50 p-6 rounded-[32px] border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold text-sm">2</div>
+                    <h3 className="text-lg font-bold text-slate-900">Address Details</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Flat/House No, Building</label>
+                      <Input name="address1" value={newUser.address1} onChange={handleNewUserChange} placeholder="e.g. 402, Sunshine Residency" required className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Street / Area</label>
+                      <Input name="address2" value={newUser.address2} onChange={handleNewUserChange} placeholder="e.g. MG Road" className="h-12 rounded-xl" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">City / Town</label>
+                      <Input name="address3" value={newUser.address3} onChange={handleNewUserChange} placeholder="e.g. Mumbai" className="h-12 rounded-xl" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">PIN Code</label>
+                      <Input name="pinCode" value={newUser.pinCode} onChange={handleNewUserChange} placeholder="e.g. 400001" required maxLength={6} className="h-12 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Contact & Legal */}
+                <div className="space-y-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">3</div>
+                    <h3 className="text-lg font-bold text-slate-900">Legal & Verification</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                        <Phone size={14} className="text-indigo-600" />
+                        Mobile Number
+                      </label>
+                      <Input name="contact" maxLength={10} value={newUser.contact} onChange={handleNewUserChange} placeholder="9876543210" required className="h-12 rounded-xl border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                        <Mail size={14} className="text-indigo-600" />
+                        Email Address
+                      </label>
+                      <Input type="email" name="email" value={newUser.email} onChange={handleNewUserChange} placeholder="your@email.com" required className="h-12 rounded-xl border-slate-200" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                        <Fingerprint size={14} className="text-indigo-600" />
+                        Aadhaar Number
+                      </label>
+                      <Input name="aadhaar" maxLength={14} value={newUser.aadhaar} onChange={handleNewUserChange} placeholder="1234 5678 9012" required className="h-12 rounded-xl border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                        <ShieldCheck size={14} className="text-indigo-600" />
+                        PAN Card Number
+                      </label>
+                      <Input name="pan" maxLength={10} value={newUser.pan} onChange={handleNewUserChange} placeholder="ABCDE1234F" className="uppercase h-12 rounded-xl border-slate-200" required />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Security */}
+                <div className="space-y-8 bg-blue-50/30 p-6 rounded-[32px] border border-blue-100/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm">4</div>
+                    <h3 className="text-lg font-bold text-slate-900">Security Credentials</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Create Password</label>
+                      <Input type="password" name="password" value={newUser.password} onChange={handleNewUserChange} placeholder="Min 6 characters" required className="h-12 rounded-xl border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Confirm Password</label>
+                      <Input type="password" name="confirmPassword" value={newUser.confirmPassword} onChange={handleNewUserChange} placeholder="Re-type password" required className="h-12 rounded-xl border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-6">
+                  <Button type="button" variant="secondary" onClick={() => setIsAddModalOpen(false)} className="h-14 rounded-2xl flex-1">Cancel</Button>
+                  <Button type="submit" className="h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-200 flex items-center justify-center gap-2 flex-1">
+                    <UserPlus size={20} />
+                    Create System User
+                  </Button>
+                </div>
+              </form>
+            </div>
         </Modal>
       )}
 

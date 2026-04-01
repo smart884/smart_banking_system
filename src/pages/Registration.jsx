@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, db } from '../lib/firebaseConfig';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth as firebaseAuth, db } from '../lib/firebaseConfig';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import Layout from '../components/Layout';
 import Section from '../components/ui/Section';
@@ -113,8 +113,8 @@ export default function Registration() {
     try {
       // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
+        firebaseAuth, 
+        formData.email, 
         formData.password
       );
 
@@ -151,6 +151,10 @@ export default function Registration() {
       }); 
 
       console.log("Firebase Registration Success ✅", user.uid);
+      
+      // Sign out immediately so they have to login manually as requested
+      await signOut(firebaseAuth);
+      
       setSuccess(true);
       alert("Registration Successful! Please login. ✅");
       setTimeout(() => navigate('/login'), 2000);
@@ -263,8 +267,15 @@ export default function Registration() {
                         <Input type="date" name="dob" value={formData.dob} onChange={handleChange} required className="h-14 rounded-xl border-slate-200 focus:ring-blue-600/10 focus:border-blue-600 font-medium" />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700 uppercase tracking-widest px-1">Account Type</label>
-                        <Input value="Savings Account (Customer)" readOnly className="h-14 rounded-xl border-slate-200 bg-slate-50 font-medium text-slate-500 cursor-not-allowed" />
+                        <label className="text-sm font-bold text-slate-700 uppercase tracking-widest px-1">Account Role</label>
+                        <select 
+                          name="role" 
+                          value={formData.role} 
+                          onChange={handleChange} 
+                          className="w-full h-14 px-4 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 font-medium text-slate-900"
+                        >
+                          <option value="customer">Customer</option>
+                        </select>
                       </div>
                     </div>
                   </div>

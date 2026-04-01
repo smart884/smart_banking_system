@@ -33,12 +33,12 @@ export default function SecureLogin() {
       const result = await login(email, password);
 
       if (result.success) {
-        const role = result.profile.role;
+        const role = result.profile.role?.toLowerCase();
         // Redirect based on role
         if (role === 'admin') navigate('/admin/dashboard');
         else if (role === 'manager') navigate('/manager/dashboard');
         else if (role === 'clerk') navigate('/clerk/dashboard');
-        else navigate('/secure-dashboard');
+        else navigate('/user/dashboard');
       } else {
         setError(result.message || "Invalid credentials. Please check your email and password.");
       }

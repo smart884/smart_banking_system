@@ -6,7 +6,7 @@ import { useAuth } from './SecureAuthContext'
 export default function Navbar() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const { currentUser, userProfile, logout } = useAuth()
+  const { currentUser, userProfile, logout, loading } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function Navbar() {
 
   const getDashboardLink = () => {
     if (!userProfile) return '/user/dashboard';
-    const role = userProfile.role.toLowerCase();
+    const role = userProfile.role?.toLowerCase();
     switch (role) {
       case 'admin': return '/admin/dashboard';
       case 'manager': return '/manager/dashboard';
@@ -47,6 +47,67 @@ export default function Navbar() {
     { to: '/services', label: 'Services', icon: Briefcase },
     { to: '/contact', label: 'Contact', icon: MessageSquare },
   ]
+
+  const renderActions = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center gap-2 px-6 py-2.5">
+          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Securing...</span>
+        </div>
+      );
+    }
+
+    if (currentUser) {
+      return (
+        <>
+          <Link to={getDashboardLink()} className="btn btn-pill bg-slate-900 hover:bg-slate-800">
+            Dashboard
+          </Link>
+          <button onClick={handleLogout} className="btn-secondary btn-pill">
+            Logout
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Link to="/login" className="flex items-center gap-2 px-6 py-2.5 font-bold text-slate-700 hover:text-blue-600 transition-colors">
+          <LogIn size={18} />
+          Login
+        </Link>
+        <Link to="/register" className="btn btn-pill bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-100 flex items-center gap-2">
+          <UserPlus size={18} />
+          Join Now
+        </Link>
+      </>
+    );
+  };
+
+  const renderMobileActions = () => {
+    if (loading) return null;
+
+    if (currentUser) {
+      return (
+        <>
+          <Link to={getDashboardLink()} onClick={() => setOpen(false)} className="btn btn-pill w-full h-16 bg-slate-900 text-lg">Dashboard</Link>
+          <button onClick={() => { handleLogout(); setOpen(false); }} className="btn-secondary btn-pill w-full h-16 text-lg">Logout</button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Link to="/login" onClick={() => setOpen(false)} className="btn-secondary btn-pill w-full h-16 text-lg flex items-center justify-center gap-3">
+          <LogIn size={20} /> Login
+        </Link>
+        <Link to="/register" onClick={() => setOpen(false)} className="btn btn-pill w-full h-16 bg-blue-600 text-lg flex items-center justify-center gap-3 shadow-2xl shadow-blue-100">
+          <UserPlus size={20} /> Join Now
+        </Link>
+      </>
+    );
+  };
 
   return (
     <header className={`sticky top-0 z-50 transition-all duration-300 ${

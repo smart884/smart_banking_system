@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { db, auth as firebaseAuth } from '../lib/firebaseConfig';
+import { initializeApp, getApp, getApps } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 
   onSnapshot, 
   updateDoc, 
   doc, 
+  setDoc,
   getDoc,
   getDocs,
   query, 
@@ -14,7 +17,20 @@ import {
   serverTimestamp,
   Timestamp 
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+
+// --- Secondary Firebase App for Admin User Creation ---
+// This prevents the Admin from being logged out when creating other users.
+const firebaseConfig = { 
+  apiKey: "AIzaSyCRvpKllTWlf-g50S1KkGwShei2OWPK8qE", 
+  authDomain: "smart-bank-47131.firebaseapp.com", 
+  projectId: "smart-bank-47131", 
+  storageBucket: "smart-bank-47131.firebasestorage.app", 
+  messagingSenderId: "377827961253", 
+  appId: "1:377827961253:web:00c7c4ba6d61c76f3d604c"
+};
+
+const secondaryApp = getApps().length > 1 ? getApp('Secondary') : initializeApp(firebaseConfig, 'Secondary');
+const secondaryAuth = getAuth(secondaryApp);
 
 /**
  * Firebase-Connected Unified Context
@@ -35,45 +51,24 @@ const DUMMY_USER = {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [userProfile, setUserProfile] = useState(() => {
-    const saved = localStorage.getItem('sb_static_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [userProfile, setUserProfile] = useState(null);
 
-  const [requests, setRequests] = useState(() => {
-    const saved = localStorage.getItem('sb_requests');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [serviceRequests, setServiceRequests] = useState(() => {
-    const saved = localStorage.getItem('sb_service_requests');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [cards, setCards] = useState(() => {
-    const saved = localStorage.getItem('sb_cards');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [loans, setLoans] = useState(() => {
-    const saved = localStorage.getItem('sb_loans');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('sb_transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [requests, setRequests] = useState([]);
+  const [serviceRequests, setServiceRequests] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [loans, setLoans] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [systemSettings, setSystemSettings] = useState(null);
-  const [userAccounts, setUserAccounts] = useState(() => {
-    const saved = localStorage.getItem('sb_user_accounts');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [loading, setLoading] = useState(() => {
-    // If we have a profile in localStorage, don't show the global loading screen
-    return !localStorage.getItem('sb_static_user');
-  });
+  const [userAccounts, setUserAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // 1. Listen for Auth Changes & Firestore Real-time Updates
   useEffect(() => {
     let unsubscribeProfile = () => {};
+
+    // Set persistence to session (logs out when tab/browser is closed)
+    setPersistence(firebaseAuth, browserSessionPersistence).catch(console.error);
 
     // Listen for Auth
     const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
@@ -91,19 +86,22 @@ export const AuthProvider = ({ children }) => {
               setUserProfile(null);
               localStorage.removeItem('sb_static_user');
             }
+            setLoading(false); // Move here to ensure profile is loaded or failed
           }, (err) => {
             console.error("Error listening for user profile:", err);
+            setLoading(false);
           });
         } catch (err) {
           console.error("Error setting up user profile listener:", err);
           setUserProfile(null);
+          setLoading(false);
         }
       } else {
         setUserProfile(null);
         localStorage.removeItem('sb_static_user');
         unsubscribeProfile();
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     // Listen for Firestore Users (Real-time)
@@ -308,7 +306,11 @@ export const AuthProvider = ({ children }) => {
         throw new Error('user-not-found');
       }
 
-      const profile = { ...userDoc.data(), uid: user.uid };
+      const profile = { 
+        ...userDoc.data(), 
+        uid: user.uid,
+        role: userDoc.data().role?.toLowerCase() || 'customer'
+      };
       setUserProfile(profile);
       localStorage.setItem('sb_static_user', JSON.stringify(profile));
 
@@ -792,17 +794,58 @@ export const AuthProvider = ({ children }) => {
     },
     addUser: async (userData) => {
       try {
-        await addDoc(collection(db, 'users'), {
-          ...userData,
-          status: 'Active',
-          createdAt: serverTimestamp(),
-          role: userData.role || 'customer',
-          kycStatus: 'Pending',
+        const { password, confirmPassword, ...profileData } = userData;
+        
+        // 1. Create user in Firebase Auth using secondary app to prevent Admin logout
+        const userCredential = await createUserWithEmailAndPassword(
+          secondaryAuth,
+          userData.email,
+          password
+        );
+        const user = userCredential.user;
+        const normalizedRole = (userData.role || "customer").toLowerCase();
+
+        // 2. Save full user data in Firestore 
+        await setDoc(doc(db, "users", user.uid), { 
+          uid: user.uid, 
+          firstName: userData.firstName, 
+          middleName: userData.middleName || "", 
+          lastName: userData.lastName, 
+          gender: userData.gender || "Male", 
+          dob: userData.dob || "", 
+          address1: userData.address1 || "", 
+          address2: userData.address2 || "", 
+          address3: userData.address3 || "", 
+          pinCode: userData.pinCode || "", 
+          contactNumber: userData.contact || "", 
+          alternateNumber: userData.altContact || "", 
+          email: userData.email, 
+          aadhaar: userData.aadhaar || "", 
+          pan: userData.pan || "", 
+          occupation: userData.occupation || "",
+          annualIncome: userData.annualIncome || "",
+          nomineeName: userData.nomineeName || "",
+          nomineeRelation: userData.nomineeRelation || "",
+          userType: normalizedRole, 
+          role: normalizedRole, 
+          status: "Active", 
+          kycStatus: "Pending",
           mobileVerified: false,
-          emailVerified: false
-        });
+          emailVerified: false,
+          createdAt: serverTimestamp() 
+        }); 
+
+        // 3. Immediately sign out from secondary app to keep it clean
+        await signOut(secondaryAuth);
+        
+        console.log(`[Admin] User profile created for ${userData.email} with role ${normalizedRole} ✅`);
+        return { success: true };
       } catch (err) {
         console.error("Failed to add user:", err);
+        let message = err.message;
+        if (err.code === 'auth/email-already-in-use') message = "This email is already in use.";
+        if (err.code === 'auth/weak-password') message = "Password should be at least 6 characters.";
+        return { success: false, message };
       }
     },
     deleteUser: async (id) => {

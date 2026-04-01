@@ -1930,6 +1930,14 @@ export default function SecureDashboard() {
               )}
             </button>
 
+            <button 
+              onClick={logout}
+              className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-100 rounded-xl text-rose-500 font-bold hover:bg-rose-50 hover:border-rose-100 transition-all shadow-sm"
+            >
+              <LogOut size={18} />
+              <span className="hidden sm:inline uppercase tracking-widest text-[10px]">Logout</span>
+            </button>
+
             {/* Notification Dropdown */}
             {showNotifications && (
               <div className="absolute top-16 right-0 w-96 bg-white rounded-[32px] shadow-2xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">

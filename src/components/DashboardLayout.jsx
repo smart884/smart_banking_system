@@ -106,11 +106,11 @@ export default function DashboardLayout({ title, children }) {
       <header className={`lg:hidden flex items-center justify-between p-6 bg-white border-b border-slate-100 sticky top-0 z-40 transition-shadow ${scrolled ? 'shadow-md' : ''}`}>
         <div className="flex items-center gap-3">
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-xl bg-slate-100 text-slate-600"><Menu size={24} /></button>
-          <span className="font-black text-slate-900 tracking-tighter uppercase">smart Bank</span>
+          <span className="font-black text-slate-900 tracking-tighter uppercase text-sm">smart Bank</span>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400"><Bell size={20} /></button>
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black">{userProfile?.firstName?.[0]}</div>
+        <div className="flex items-center gap-3">
+          <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center shadow-sm"><LogOut size={18} /></button>
+          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-lg shadow-blue-200">{userProfile?.firstName?.[0]}</div>
         </div>
       </header>
 
@@ -131,7 +131,9 @@ export default function DashboardLayout({ title, children }) {
                 <Bell size={20} />
                 <span className="absolute top-3 right-3 w-1.5 h-1.5 bg-red-500 rounded-full ring-2 ring-white"></span>
               </button>
-              <button className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:text-blue-600 transition-colors"><Settings size={20} /></button>
+              <button onClick={handleLogout} className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all flex items-center justify-center shadow-sm">
+                <LogOut size={20} />
+              </button>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">

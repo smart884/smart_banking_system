@@ -584,6 +584,7 @@ export default function ManagerDashboard() {
                  <Bell size={22} className="text-slate-500 group-hover:text-white" />
                  <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
               </button>
+              <button onClick={handleLogout} className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-500 hover:bg-rose-100 transition-all shadow-sm"><LogOut size={22} /></button>
               <div className="flex items-center gap-4 pl-6 border-l border-slate-100">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-black text-slate-900 leading-none mb-1">{userProfile?.firstName}</p>

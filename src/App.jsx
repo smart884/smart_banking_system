@@ -43,7 +43,10 @@ const ProtectedRoute = ({ children, roles }) => {
   
   if (!userProfile) return <Navigate to="/login" replace />;
   
-  if (roles && !roles.includes(userProfile.role)) {
+  const userRole = userProfile.role?.toLowerCase();
+  const allowedRoles = roles?.map(r => r.toLowerCase());
+  
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
     return <Navigate to="/unauthorized" replace />;
   }
   
@@ -59,7 +62,9 @@ const DashboardRedirect = () => {
   
   if (!userProfile) return <Navigate to="/login" replace />;
   
-  switch (userProfile.role) {
+  const role = userProfile.role?.toLowerCase();
+  
+  switch (role) {
     case 'admin': return <Navigate to="/admin/dashboard" replace />;
     case 'manager': return <Navigate to="/manager/dashboard" replace />;
     case 'clerk': return <Navigate to="/clerk/dashboard" replace />;

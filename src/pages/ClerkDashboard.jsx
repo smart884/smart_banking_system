@@ -580,6 +580,7 @@ export default function ClerkDashboard() {
                 <input type="text" placeholder="Search requests..." className="bg-transparent outline-none text-sm font-medium w-40" />
               </div>
               <button className="p-3 rounded-2xl bg-slate-50 border border-slate-100 relative"><Bell size={20} /><span className="absolute top-3 right-3 w-2 h-2 bg-blue-600 rounded-full" /></button>
+              <button onClick={handleLogout} className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-500 hover:bg-rose-100 transition-all shadow-sm"><LogOut size={20} /></button>
               <div className="flex items-center gap-3 pl-6 border-l border-slate-100">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-black text-slate-900 leading-none mb-1">{userProfile?.firstName}</p>

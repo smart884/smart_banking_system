@@ -38,6 +38,7 @@ export default function ClerkDashboard() {
     serviceRequests = [], 
     updateRequestStatus, 
     updateServiceRequestStatus, // Renamed
+    performDeposit,
     clearRequests, 
     populateDemoData, 
     allUsers = [] 
@@ -109,8 +110,34 @@ export default function ClerkDashboard() {
     { to: '/clerk/reports', label: 'Reports', icon: BarChart3 },
   ];
 
-  const handleAction = (id, category, status) => {
-    // Check if it's a ServiceRequest (Credit Card, Debit Card, Loan, KYC)
+  const handleAction = async (id, category, status) => {
+    // 1. Handle Deposit Request
+    if (selectedReq?.type === 'Deposit Request') {
+      if (status === 'approved') {
+        const res = await performDeposit({
+          accountId: selectedReq.details.accountId,
+          amount: selectedReq.details.amount,
+          userName: selectedReq.userName,
+          userId: selectedReq.userId,
+          accountNumber: selectedReq.details.accountNumber
+        });
+
+        if (res.success) {
+          updateRequestStatus(id, 'approved', remarks || 'Deposit Approved by Clerk');
+          showToast(`Deposit of ₹${selectedReq.details.amount} APPROVED! ✅`);
+        } else {
+          showToast(`Deposit FAILED: ${res.message} ❌`);
+        }
+      } else {
+        updateRequestStatus(id, 'rejected', remarks || 'Rejected by Clerk');
+        showToast('Deposit Request Rejected ❌');
+      }
+      setSelectedReq(null);
+      setRemarks('');
+      return;
+    }
+
+    // 2. Handle ServiceRequest (Credit Card, Debit Card, Loan, KYC)
     const serviceType = selectedReq?.type?.toLowerCase() || '';
     const isServiceReq = serviceType.includes('card') || serviceType.includes('loan') || serviceType.includes('kyc');
 
@@ -394,15 +421,17 @@ export default function ClerkDashboard() {
               />
             </div>
 
-            <Button 
-              full 
-              onClick={handleVerifyKYC}
-              className={`h-14 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl transition-all active:scale-[0.98] ${
-                kycResult ? 'bg-slate-900 hover:bg-black' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-              }`}
-            >
-              {kycResult ? 'Run Verification Again' : 'Verify KYC Data'}
-            </Button>
+            {selectedReq.type !== 'Deposit Request' && (
+              <Button 
+                full 
+                onClick={handleVerifyKYC}
+                className={`h-14 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl transition-all active:scale-[0.98] ${
+                  kycResult ? 'bg-slate-900 hover:bg-black' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                }`}
+              >
+                {kycResult ? 'Run Verification Again' : 'Verify KYC Data'}
+              </Button>
+            )}
             
             {(selectedReq.status !== 'approved' && selectedReq.status !== 'manager_approved') && (
               <div className="grid grid-cols-2 gap-4">

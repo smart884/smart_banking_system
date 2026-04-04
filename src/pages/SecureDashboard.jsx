@@ -185,6 +185,10 @@ export default function SecureDashboard() {
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
+  const [selectedCard, setSelectedCard] = useState(null); // State for card details modal
+  const [depositModal, setDepositModal] = useState(false); // State for deposit request modal
+  const [depositAmount, setDepositAmount] = useState(''); // Amount for deposit
+  const [isDepositing, setIsDepositing] = useState(false); // Loading state for deposit request
   const [selectedLoan, setSelectedLoan] = useState(null); // State for loan details modal
   const [transferSuccess, setTransferSuccess] = useState(false); // Success animation state
   const [billStep, setBillStep] = useState(1); // Specific sub-steps for Electricity Bill
@@ -535,6 +539,48 @@ export default function SecureDashboard() {
     setSelectedPlan(null);
     setCcStep(1);
     setCcPaymentStatus(null);
+    setDepositModal(false);
+    setDepositAmount('');
+    setIsDepositing(false);
+  };
+
+  const handleDepositRequest = async (e) => {
+    e.preventDefault();
+    if (!depositAmount || parseFloat(depositAmount) <= 0) {
+      setFormError('Please enter a valid amount.');
+      return;
+    }
+
+    setIsDepositing(true);
+    setFormError('');
+
+    try {
+      const depositData = {
+        userName: `${userProfile?.firstName} ${userProfile?.lastName}`,
+        type: 'Deposit Request',
+        category: 'account',
+        status: 'pending',
+        userId: userProfile.uid,
+        createdAt: new Date().toISOString(),
+        details: {
+          accountNumber: selectedAccount.accountNumber,
+          accountId: selectedAccount.id,
+          amount: parseFloat(depositAmount),
+          accountType: selectedAccount.accountType || 'saving'
+        }
+      };
+
+      await addRequest(depositData);
+      setDepositModal(false);
+      setDepositAmount('');
+      setSelectedAccount(null);
+      setToast('Deposit request submitted! Once approved by the clerk, the amount will be credited to your account.');
+    } catch (err) {
+      console.error("Deposit request failed:", err);
+      setFormError('Failed to submit deposit request. Please try again.');
+    } finally {
+      setIsDepositing(false);
+    }
   };
 
   const closeModal = () => {
@@ -747,27 +793,54 @@ export default function SecureDashboard() {
 
     // Transfer & Bill Payment Logic & Validation
     if (modal.type === 'transfer' || modal.type === 'bill-pay') {
-      if (!formData.fromAccount || !formData.amount) {
-        setFormError('Source account and amount are required.');
+      const isCardSource = formData.paymentSourceType === 'card';
+      const sourceId = isCardSource ? formData.fromCard : formData.fromAccount;
+
+      if (!sourceId || !formData.amount) {
+        setFormError(`${isCardSource ? 'Card' : 'Account'} and amount are required.`);
         return;
       }
       
-      const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
       const paymentAmt = parseFloat(formData.amount);
-      
-      if (!sourceAcc) {
-        setFormError('Source account not found.');
-        return;
-      }
-      
       if (paymentAmt <= 0) {
         setFormError('Amount must be greater than zero.');
         return;
       }
 
-      if (paymentAmt > sourceAcc.balance) {
-        setFormError(`Insufficient funds! Your ${sourceAcc.accountType} account only has ₹${sourceAcc.balance}.`);
-        return;
+      if (isCardSource) {
+        const sourceCard = cards.find(c => c.cardNumber === formData.fromCard);
+        if (!sourceCard) {
+          setFormError('Source card not found.');
+          return;
+        }
+        if (sourceCard.cardType === 'Credit') {
+          const usedLimit = parseFloat(sourceCard.usedLimit || 0);
+          if (usedLimit + paymentAmt > parseFloat(sourceCard.limit)) {
+            setFormError(`Insufficient credit limit! Card only has ₹${(parseFloat(sourceCard.limit) - usedLimit).toLocaleString()} available.`);
+            return;
+          }
+        } else {
+          // Debit card checks linked account
+          const linkedAcc = allAccounts.find(acc => acc.accountNumber === sourceCard.accountNumber);
+          if (!linkedAcc) {
+            setFormError('Linked account for this debit card not found.');
+            return;
+          }
+          if (paymentAmt > linkedAcc.balance) {
+            setFormError(`Insufficient funds in linked account! Available: ₹${linkedAcc.balance.toLocaleString()}.`);
+            return;
+          }
+        }
+      } else {
+        const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+        if (!sourceAcc) {
+          setFormError('Source account not found.');
+          return;
+        }
+        if (paymentAmt > sourceAcc.balance) {
+          setFormError(`Insufficient funds! Your ${sourceAcc.accountType} account only has ₹${sourceAcc.balance}.`);
+          return;
+        }
       }
 
       if (modal.type === 'transfer' && !formData.recipient) {
@@ -805,12 +878,13 @@ export default function SecureDashboard() {
             if (!result.success) throw new Error(result.message);
             setTransferSuccess(true);
           } else {
-            // Use the new performPayment helper to debit the account and record the transaction
+            // Use the new performPayment helper to debit the account/card and record the transaction
             const result = await performPayment({
               fromAccountNumber: formData.fromAccount,
+              fromCardNumber: formData.fromCard,
               amount: parseFloat(formData.amount),
               type: 'Payment',
-              remark: `${modal.title} (${formData.fromAccount}): ${formData.billCategory || 'Bill'}`,
+              remark: `${modal.title} (${formData.fromCard || formData.fromAccount}): ${formData.billCategory || 'Bill'}`,
               billCategory: formData.billCategory || 'System'
             });
 
@@ -1467,46 +1541,111 @@ export default function SecureDashboard() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
               {cards.map((card, i) => (
-                <div key={card.id || i} className="group relative aspect-[1.58/1] rounded-[40px] overflow-hidden shadow-2xl transition-all duration-500 hover:scale-[1.02] hover:-translate-y-2">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${i % 2 === 0 ? 'from-slate-900 via-slate-800 to-slate-900' : 'from-blue-700 via-indigo-800 to-blue-900'} p-10 text-white flex flex-col justify-between`}>
-                    <div className="absolute top-0 right-0 p-32 bg-white/5 rounded-full blur-[80px] -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000"></div>
-                    
-                    <div className="relative z-10 flex justify-between items-start">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">SmartBank {card.cardType} {card.category !== 'Credit' ? card.category : ''}</p>
-                        <h4 className="text-xl font-bold tracking-tight">{card.cardType === 'Debit' ? 'Instant Access' : 'Premium Signature'}</h4>
+                <div key={card.id || i} className="group flex flex-col bg-white rounded-[40px] shadow-xl border border-slate-100 overflow-hidden hover:shadow-2xl transition-all duration-500">
+                  {/* Card Visual */}
+                  <div className="relative aspect-[1.58/1] m-4 rounded-[32px] overflow-hidden shadow-2xl transition-all duration-500 hover:scale-[1.02]">
+                    <div className={`absolute inset-0 bg-gradient-to-br ${i % 2 === 0 ? 'from-slate-900 via-slate-800 to-slate-900' : 'from-blue-700 via-indigo-800 to-blue-900'} p-8 text-white flex flex-col justify-between`}>
+                      <div className="absolute top-0 right-0 p-32 bg-white/5 rounded-full blur-[80px] -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000"></div>
+                      
+                      <div className="relative z-10 flex justify-between items-start">
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">SmartBank {card.cardType} {card.category !== 'Credit' ? card.category : ''}</p>
+                          <h4 className="text-lg font-bold tracking-tight">{card.cardType === 'Debit' ? 'Instant Access' : 'Premium Signature'}</h4>
+                        </div>
+                        <div className="w-12 h-8 bg-white/10 backdrop-blur-md rounded-lg border border-white/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-white/20 -mr-2" />
+                          <div className="w-6 h-6 rounded-full bg-white/20" />
+                        </div>
                       </div>
-                      <div className="w-14 h-10 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 flex items-center justify-center">
-                        <div className="w-8 h-8 rounded-full bg-white/20 -mr-3" />
-                        <div className="w-8 h-8 rounded-full bg-white/20" />
+
+                      <div className="relative z-10 space-y-1">
+                        <p className="text-xl xl:text-2xl font-mono tracking-[0.2em] font-black text-white/90">
+                          {card.cardNumber.replace(/\d(?=\d{4})/g, "•")}
+                        </p>
+                        <div className="flex gap-6">
+                          <div>
+                            <p className="text-[7px] font-black uppercase tracking-widest text-white/40 mb-0.5">Expiry</p>
+                            <p className="text-xs font-bold">{card.expiry}</p>
+                          </div>
+                          <div>
+                            <p className="text-[7px] font-black uppercase tracking-widest text-white/40 mb-0.5">CVV</p>
+                            <p className="text-xs font-bold">***</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="relative z-10 flex justify-between items-end">
+                        <div>
+                          <p className="text-[7px] font-black uppercase tracking-widest text-white/40 mb-0.5">Card Holder</p>
+                          <p className="text-xs font-black uppercase tracking-widest">{card.userName}</p>
+                        </div>
+                        <div className="px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-lg border border-white/20">
+                          {card.cardType === 'Debit' ? (
+                            <>
+                              <p className="text-[7px] font-black uppercase tracking-widest text-white/40 leading-none mb-0.5">Account Balance</p>
+                              <p className="text-[10px] font-black">₹{(allAccounts.find(acc => acc.accountNumber === card.accountNumber)?.balance || 0).toLocaleString()}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-[7px] font-black uppercase tracking-widest text-white/40 leading-none mb-0.5">Available Limit</p>
+                              <p className="text-[10px] font-black">₹{(parseFloat(card.limit) - parseFloat(card.usedLimit || 0)).toLocaleString()}</p>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="relative z-10 space-y-2">
-                      <p className="text-2xl xl:text-3xl font-mono tracking-[0.2em] font-black text-white/90">
-                        {card.cardNumber.replace(/\d(?=\d{4})/g, "•")}
+                  {/* Card Usage Stats */}
+                  <div className="px-8 pb-8 pt-2 space-y-6">
+                    {(() => {
+                      const isDebit = card.cardType === 'Debit';
+                      const linkedAcc = allAccounts.find(acc => acc.accountNumber === card.accountNumber);
+                      const balance = linkedAcc?.balance || 0;
+                      const used = parseFloat(card.usedLimit || 0);
+                      const totalCapacity = isDebit ? (balance + used) : parseFloat(card.limit);
+                      const progress = totalCapacity > 0 ? Math.round((used / totalCapacity) * 100) : 0;
+
+                      return (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Used Amount</p>
+                              <p className="text-lg font-black text-slate-900">₹{used.toLocaleString()}</p>
+                            </div>
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isDebit ? 'Account Balance' : 'Total Limit'}</p>
+                              <p className="text-lg font-black text-blue-600">₹{(isDebit ? balance : totalCapacity).toLocaleString()}</p>
+                            </div>
+                          </div>
+
+                          {/* Usage Progress Bar */}
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center px-1">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Usage Progress</p>
+                              <p className="text-[10px] font-black text-slate-900">{progress}%</p>
+                            </div>
+                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-blue-600 transition-all duration-1000" 
+                                style={{ width: `${Math.min(100, progress)}%` }} 
+                              />
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+
+                    <div className="flex items-center justify-between pt-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
+                        {card.cardType === 'Credit' ? 'Billing cycle: 30 days' : 'Linked to your primary account'}
                       </p>
-                      <div className="flex gap-8">
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">Expiry</p>
-                          <p className="text-sm font-bold">{card.expiry}</p>
-                        </div>
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">CVV</p>
-                          <p className="text-sm font-bold">***</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="relative z-10 flex justify-between items-end">
-                      <div>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">Card Holder</p>
-                        <p className="text-sm font-black uppercase tracking-widest">{card.userName}</p>
-                      </div>
-                      <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20">
-                        <p className="text-[8px] font-black uppercase tracking-widest text-white/40 leading-none mb-1">Limit</p>
-                        <p className="text-xs font-black">₹{parseFloat(card.limit).toLocaleString()}</p>
-                      </div>
+                      <button 
+                        onClick={() => setSelectedCard(card)}
+                        className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg"
+                      >
+                        View Details
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2315,24 +2454,23 @@ export default function SecureDashboard() {
               {/* USE CASE: Pay bills / Recharge */}
               {modal.type === 'bill-pay' && (
                 <div className="space-y-6">
-                  {/* Common: From Account & Category Selection */}
+                  {/* Common: Payment Source & Category Selection */}
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="label">From Account</label>
+                        <label className="label">Payment Source</label>
                         <select 
-                          name="fromAccount" 
-                          onChange={handleInputChange} 
-                          value={formData.fromAccount || ''}
+                          name="paymentSourceType" 
+                          onChange={(e) => {
+                            handleInputChange(e);
+                            setFormData(prev => ({ ...prev, fromAccount: '', fromCard: '' }));
+                          }} 
+                          value={formData.paymentSourceType || 'account'}
                           className="input" 
                           required
                         >
-                          <option value="">Select source account</option>
-                          {allAccounts.map(acc => (
-                            <option key={acc.id} value={acc.accountNumber}>
-                              {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
-                            </option>
-                          ))}
+                          <option value="account">Bank Account</option>
+                          <option value="card">Debit/Credit Card</option>
                         </select>
                       </div>
 
@@ -2346,6 +2484,56 @@ export default function SecureDashboard() {
                           <option value="mobile-recharge">Mobile Recharge</option>
                         </select>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6">
+                      {formData.paymentSourceType === 'card' ? (
+                        <div className="space-y-2">
+                          <label className="label">Select Card</label>
+                          <select 
+                            name="fromCard" 
+                            onChange={(e) => {
+                              const selectedCard = cards.find(c => c.cardNumber === e.target.value);
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                fromCard: e.target.value,
+                                fromAccount: selectedCard?.accountNumber || '' // For debit cards, linked account
+                              }));
+                            }} 
+                            value={formData.fromCard || ''}
+                            className="input" 
+                            required
+                          >
+                            <option value="">Select payment card</option>
+                            {cards.filter(c => c.status === 'Active').map(card => (
+                              <option key={card.id} value={card.cardNumber}>
+                                {card.cardType.toUpperCase()} - {card.cardNumber} ({card.userName})
+                              </option>
+                            ))}
+                          </select>
+                          {cards.filter(c => c.status === 'Active').length === 0 && (
+                            <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest px-2 italic">No active cards found. Please apply for a card first.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <label className="label">From Account</label>
+                          <select 
+                            name="fromAccount" 
+                            onChange={handleInputChange} 
+                            value={formData.fromAccount || ''}
+                            className="input" 
+                            required
+                          >
+                            <option value="">Select source account</option>
+                            {allAccounts.map(acc => (
+                              <option key={acc.id} value={acc.accountNumber}>
+                                {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     {/* Default Form for other categories */}
@@ -2379,23 +2567,19 @@ export default function SecureDashboard() {
                     const isBalanceInsufficient = sourceAccount && sourceAccount.balance < parseFloat(formData.amount || 0);
 
                     const handlePayment = async () => {
-                      if (!formData.fromAccount) {
-                        setFormError('Please select a source account to pay from.');
+                      if (!formData.fromAccount && !formData.fromCard) {
+                        setFormError('Please select a source account or card to pay from.');
                         return;
                       }
                       if (isAmountBelowEmi) {
                         setFormError(`EMI payment must be at least ₹${emiAmount.toLocaleString()}.`);
                         return;
                       }
-                      if (isBalanceInsufficient) {
-                        setFormError(`Insufficient balance in account ${formData.fromAccount}. Available: ₹${(sourceAccount?.balance || 0).toLocaleString()}`);
-                        return;
-                      }
                       
                       setFormError('');
                       setSubmitting(true);
                       try {
-                        const result = await payLoanEMI(formData.refNum, parseFloat(formData.amount), formData.fromAccount);
+                        const result = await payLoanEMI(formData.refNum, parseFloat(formData.amount), formData.fromAccount, formData.fromCard);
                         if (result.success) {
                           setLoanStatus('success');
                           setLoanStep(2);
@@ -3467,7 +3651,7 @@ export default function SecureDashboard() {
               </div>
             </div>
 
-            {/* Actions: View Debit Card */}
+            {/* Actions: View Debit Card & Add Money */}
             <div className="flex gap-4">
               <button 
                 onClick={() => {
@@ -3477,6 +3661,12 @@ export default function SecureDashboard() {
                 className="flex-1 h-16 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all shadow-xl flex items-center justify-center gap-3"
               >
                 <CardIcon size={20} /> View Debit Card
+              </button>
+              <button 
+                onClick={() => setDepositModal(true)}
+                className="flex-1 h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-900 transition-all shadow-xl flex items-center justify-center gap-3"
+              >
+                <PlusCircle size={20} /> Add Money
               </button>
             </div>
 
@@ -3545,6 +3735,248 @@ export default function SecureDashboard() {
               </div>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* Card Details Modal */}
+      <Modal
+        isOpen={!!selectedCard}
+        onClose={() => setSelectedCard(null)}
+        title="Card Detailed Specification"
+        size="lg"
+      >
+        {selectedCard && (
+          <div className="space-y-8">
+            {/* Header: Name & Type */}
+            <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black text-2xl shadow-xl shadow-blue-200">
+                  {selectedCard.cardType === 'Credit' ? '💳' : '🏦'}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Card Holder</p>
+                  <h3 className="text-xl font-black text-slate-900">{selectedCard.userName}</h3>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Card Protocol</p>
+                <span className={`px-4 py-1.5 ${selectedCard.cardType === 'Credit' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'} rounded-full text-[10px] font-black uppercase tracking-widest border`}>
+                  {selectedCard.cardType} {selectedCard.category}
+                </span>
+              </div>
+            </div>
+
+            {/* Core Stats: Number & Usage/Account */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-10 bg-blue-600/20 rounded-full blur-2xl -mr-5 -mt-5 group-hover:scale-150 transition-transform duration-700" />
+                <div className="relative z-10">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-4">Card Number</p>
+                  <p className="text-2xl font-mono tracking-[0.2em] font-bold">
+                    {selectedCard.cardNumber}
+                  </p>
+                  <div className="mt-6 flex gap-8">
+                    <div>
+                      <p className="text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">Expiry</p>
+                      <p className="text-sm font-bold">{selectedCard.expiry}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-white/40 uppercase tracking-widest mb-1">CVV</p>
+                      <p className="text-sm font-bold">***</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {selectedCard.cardType === 'Debit' ? (
+                // Debit Card: Show Linked Account Info & Usage
+                <div className="p-8 bg-white border border-slate-100 rounded-[32px] shadow-xl flex flex-col justify-between gap-6">
+                  {(() => {
+                    const linkedAcc = allAccounts.find(acc => acc.accountNumber === selectedCard.accountNumber);
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Bill Payment Usage</p>
+                            <h4 className="text-xl font-black text-slate-900 tracking-tight">₹{parseFloat(selectedCard.usedLimit || 0).toLocaleString()}</h4>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Available Balance</p>
+                            <h4 className="text-xl font-black text-blue-600 tracking-tight">₹{(linkedAcc?.balance || 0).toLocaleString()}</h4>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Linked Bank Account</p>
+                          <p className="text-sm font-black text-slate-900">{selectedCard.accountNumber}</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-emerald-500 font-bold text-[10px]">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          Live Account Link Active
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                // Credit Card: Show Usage Tracker
+                <div className="p-8 bg-white border border-slate-100 rounded-[32px] shadow-xl flex flex-col justify-between">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Card Usage</p>
+                    <h4 className="text-4xl font-black text-slate-900 tracking-tight">₹{parseFloat(selectedCard.usedLimit || 0).toLocaleString()}</h4>
+                  </div>
+                  <div className="mt-4 flex items-center gap-2 text-blue-500 font-bold text-xs">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    Real-time Usage Tracker
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Terms & Billing Info (Only for Credit Cards) or Account Details (For Debit Cards) */}
+            {selectedCard.cardType === 'Credit' ? (
+              <div className="p-8 bg-amber-50 rounded-[32px] border border-amber-100 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center text-white">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-amber-900 uppercase tracking-widest">Billing Terms & Conditions</h4>
+                    <p className="text-[10px] text-amber-700 font-bold uppercase tracking-tight mt-0.5">Please review the card usage policies carefully</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-amber-200/50">
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5" />
+                      <p className="text-xs font-medium text-amber-900">
+                        <span className="font-black uppercase tracking-tighter">Billing Cycle:</span> You must pay your card bill within <span className="font-black">30 days</span> of statement generation.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5" />
+                      <p className="text-xs font-medium text-amber-900">
+                        <span className="font-black uppercase tracking-tighter">Interest Rate:</span> Failure to pay the total due within the cycle will attract <span className="font-black text-rose-600">30% - 40% annual interest</span>.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5" />
+                      <p className="text-xs font-medium text-amber-900">
+                        <span className="font-black uppercase tracking-tighter">Due Period:</span> Standard bill payment due date is <span className="font-black">15 days</span> from statement date.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5" />
+                      <p className="text-xs font-medium text-amber-900">
+                        <span className="font-black uppercase tracking-tighter">Late Charges:</span> A late payment fee of <span className="font-black text-rose-600">₹500+</span> applies if the minimum amount is not paid by the due date.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 bg-blue-50 rounded-[32px] border border-blue-100 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+                    <CardIcon size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-blue-900 uppercase tracking-widest">Debit Card Policy</h4>
+                    <p className="text-[10px] text-blue-700 font-bold uppercase tracking-tight mt-0.5">Linked to your high-security bank account</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-blue-200/50">
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-1.5" />
+                      <p className="text-xs font-medium text-blue-900">
+                        <span className="font-black uppercase tracking-tighter">Direct Debit:</span> All transactions are immediately debited from account <span className="font-black">{selectedCard.accountNumber}</span>.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-1.5" />
+                      <p className="text-xs font-medium text-blue-900">
+                        <span className="font-black uppercase tracking-tighter">Security:</span> Real-time verification for every transaction through our secure gateway.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  setSelectedCard(null);
+                  setActiveTab('payments');
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    paymentSourceType: 'card',
+                    fromCard: selectedCard.cardNumber,
+                    billCategory: selectedCard.cardType === 'Credit' ? 'credit-card' : ''
+                  }));
+                }}
+                className="flex-1 h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-900 transition-all shadow-xl flex items-center justify-center gap-3"
+              >
+                <IndianRupee size={20} /> {selectedCard.cardType === 'Credit' ? 'Pay Card Bill' : 'Pay Using Card'}
+              </button>
+              <Button onClick={() => setSelectedCard(null)} className="flex-1 h-16 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-widest text-xs">
+                Close Details
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Deposit Request Modal */}
+      <Modal
+        isOpen={depositModal}
+        onClose={() => { setDepositModal(false); setDepositAmount(''); setFormError(''); }}
+        title="Deposit Money to Account"
+        size="md"
+      >
+        {selectedAccount && (
+          <form onSubmit={handleDepositRequest} className="space-y-6">
+            <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 mb-6">
+              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Target Account</p>
+              <h4 className="text-lg font-black text-slate-900">{selectedAccount.accountNumber}</h4>
+              <p className="text-xs text-slate-500 font-medium">{(selectedAccount.accountType || 'Saving').toUpperCase()} Account</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Amount to Deposit (₹)</label>
+              <Input
+                type="number"
+                placeholder="Enter amount"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                className="h-14 rounded-2xl"
+                required
+              />
+              <p className="text-[10px] text-slate-400 font-medium px-1 italic">
+                * This deposit request will be sent to the bank clerk for approval.
+              </p>
+            </div>
+
+            {formError && (
+              <div className="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold border border-rose-100 animate-pulse">
+                {formError}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              disabled={isDepositing}
+              className="w-full h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-200"
+            >
+              {isDepositing ? 'Submitting...' : 'Submit Deposit Request'}
+            </Button>
+          </form>
         )}
       </Modal>
     </div>

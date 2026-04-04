@@ -738,30 +738,102 @@ export const AuthProvider = ({ children }) => {
         updateServiceRequestStatus,
         initializeServiceMaster,
     performTransfer,
-    performPayment: async (paymentData) => {
+    performDeposit: async (depositData) => {
       try {
-        const { fromAccountNumber, amount, type, remark, billCategory } = paymentData;
+        const { accountId, amount, userName, userId, accountNumber } = depositData;
         
-        // 1. Find account by number
-        const accountsRef = collection(db, 'accounts');
-        const q = query(accountsRef, where('accountNumber', '==', fromAccountNumber));
-        const accSnapshot = await getDocs(q);
-        if (accSnapshot.empty) throw new Error("Source account not found");
-        
-        const accDoc = accSnapshot.docs[0];
-        const accData = accDoc.data();
-        const accRef = doc(db, 'accounts', accDoc.id);
+        // 1. Get Account
+        const accRef = doc(db, 'accounts', accountId);
+        const accSnap = await getDoc(accRef);
+        if (!accSnap.exists()) throw new Error('Account not found');
+        const accData = accSnap.data();
 
-        // 2. Check balance
-        if (accData.balance < amount) throw new Error("Insufficient balance");
-
-        // 3. Update balance
+        // 2. Update Balance
         await updateDoc(accRef, {
-          balance: accData.balance - amount,
+          balance: accData.balance + parseFloat(amount),
           lastTransactionDate: serverTimestamp()
         });
 
-        // 4. Record transaction in 'transactions' collection
+        // 3. Record Transaction
+        const timestamp = serverTimestamp();
+        await addDoc(collection(db, 'transactions'), {
+          userId: userId,
+          userName: userName,
+          type: 'Deposit',
+          category: 'Credit',
+          amount: parseFloat(amount),
+          fromAccount: 'Self (Deposit)',
+          toAccount: accountNumber,
+          remark: 'Self Account Deposit (Clerk Approved)',
+          timestamp
+        });
+
+        console.log(`[Banking] Deposit of ₹${amount} successful for account ${accountNumber} ✅`);
+        return { success: true };
+      } catch (err) {
+        console.error("[Banking] Deposit failed:", err);
+        return { success: false, message: err.message };
+      }
+    },
+    performPayment: async (paymentData) => {
+      try {
+        const { fromAccountNumber, fromCardNumber, amount, type, remark, billCategory } = paymentData;
+        
+        let actualFromAccount = fromAccountNumber;
+        let isCreditCard = false;
+        let cardDocId = null;
+
+        // 1. If card is source, resolve account or check credit limit
+        if (fromCardNumber) {
+          const cardRef = collection(db, 'Card_tbl');
+          const cq = query(cardRef, where('cardNumber', '==', fromCardNumber));
+          const cSnap = await getDocs(cq);
+          if (cSnap.empty) throw new Error("Source card not found");
+          
+          const cardData = cSnap.docs[0].data();
+          cardDocId = cSnap.docs[0].id;
+
+          if (cardData.cardType === 'Debit') {
+            actualFromAccount = cardData.accountNumber;
+            if (!actualFromAccount) throw new Error("Debit card not linked to an account");
+          } else {
+            isCreditCard = true;
+            const usedLimit = parseFloat(cardData.usedLimit || 0);
+            const limit = parseFloat(cardData.limit || 0);
+            if (usedLimit + amount > limit) throw new Error("Credit limit exceeded");
+          }
+        }
+
+        if (!isCreditCard) {
+          // 2. Find account by number (for direct account or debit card)
+          const accountsRef = collection(db, 'accounts');
+          const q = query(accountsRef, where('accountNumber', '==', actualFromAccount));
+          const accSnapshot = await getDocs(q);
+          if (accSnapshot.empty) throw new Error("Source account not found");
+          
+          const accDoc = accSnapshot.docs[0];
+          const accData = accDoc.data();
+          const accRef = doc(db, 'accounts', accDoc.id);
+
+          // 3. Check balance
+          if (accData.balance < amount) throw new Error("Insufficient balance");
+
+          // 4. Update balance
+          await updateDoc(accRef, {
+            balance: accData.balance - amount,
+            lastTransactionDate: serverTimestamp()
+          });
+        } else {
+          // 2. Update Credit Card used limit
+          const cardRef = doc(db, 'Card_tbl', cardDocId);
+          const cardSnap = await getDoc(cardRef);
+          const currentUsed = parseFloat(cardSnap.data().usedLimit || 0);
+          await updateDoc(cardRef, {
+            usedLimit: currentUsed + amount
+          });
+        }
+
+        // 5. Record transaction in 'transactions' collection
         const timestamp = serverTimestamp();
         await addDoc(collection(db, 'transactions'), {
           userId: userProfile.uid,
@@ -769,13 +841,13 @@ export const AuthProvider = ({ children }) => {
           type: type || 'Payment',
           category: 'Debit',
           amount: -amount,
-          fromAccount: fromAccountNumber,
+          fromAccount: fromCardNumber ? `Card: ${fromCardNumber}` : actualFromAccount,
           toAccount: billCategory || 'System',
           remark: remark || 'Bill Payment',
           timestamp
         });
 
-        console.log(`[Banking] Payment successful: ₹${amount} debited from ${fromAccountNumber} ✅`);
+        console.log(`[Banking] Payment successful: ₹${amount} ${isCreditCard ? 'charged to credit card' : `debited from ${actualFromAccount}`} ✅`);
         return { success: true };
       } catch (err) {
         console.error("[Banking] Payment failed:", err);
@@ -903,7 +975,7 @@ export const AuthProvider = ({ children }) => {
         return null;
       }
     },
-    payLoanEMI: async (loanId, amount, fromAccountNum) => {
+    payLoanEMI: async (loanId, amount, fromAccountNum, fromCardNumber) => {
       try {
         const cleanId = loanId.trim().toUpperCase();
         // 1. Get Loan
@@ -928,22 +1000,55 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // 2. Get Account
-        const accQ = query(collection(db, 'accounts'), where('accountNumber', '==', fromAccountNum));
-        const accSnapshot = await getDocs(accQ);
-        if (accSnapshot.empty) throw new Error("Source account not found");
-        
-        const accDoc = accSnapshot.docs[0];
-        const accData = accDoc.data();
-        const accRef = doc(db, 'accounts', accDoc.id);
+        let actualFromAccount = fromAccountNum;
+        let isCreditCard = false;
+        let cardDocId = null;
 
-        if (accData.balance < amount) throw new Error("Insufficient balance");
+        // 2. Resolve Payment Source
+        if (fromCardNumber) {
+          const cardRef = collection(db, 'Card_tbl');
+          const cq = query(cardRef, where('cardNumber', '==', fromCardNumber));
+          const cSnap = await getDocs(cq);
+          if (cSnap.empty) throw new Error("Source card not found");
+          
+          const cardData = cSnap.docs[0].data();
+          cardDocId = cSnap.docs[0].id;
 
-        // 3. Update Balance
-        await updateDoc(accRef, {
-          balance: accData.balance - amount,
-          lastTransactionDate: serverTimestamp()
-        });
+          if (cardData.cardType === 'Debit') {
+            actualFromAccount = cardData.accountNumber;
+            if (!actualFromAccount) throw new Error("Debit card not linked to an account");
+          } else {
+            isCreditCard = true;
+            const usedLimit = parseFloat(cardData.usedLimit || 0);
+            const limit = parseFloat(cardData.limit || 0);
+            if (usedLimit + amount > limit) throw new Error("Credit limit exceeded");
+          }
+        }
+
+        if (!isCreditCard) {
+          // Find Account
+          const accQ = query(collection(db, 'accounts'), where('accountNumber', '==', actualFromAccount));
+          const accSnapshot = await getDocs(accQ);
+          if (accSnapshot.empty) throw new Error("Source account not found");
+          
+          const accDoc = accSnapshot.docs[0];
+          const accData = accDoc.data();
+          const accRef = doc(db, 'accounts', accDoc.id);
+
+          if (accData.balance < amount) throw new Error("Insufficient balance");
+
+          // Update Balance
+          await updateDoc(accRef, {
+            balance: accData.balance - amount,
+            lastTransactionDate: serverTimestamp()
+          });
+        } else {
+          // Update Credit Card
+          const cardRef = doc(db, 'Card_tbl', cardDocId);
+          await updateDoc(cardRef, {
+            usedLimit: (parseFloat(snapshot.docs[0]?.data()?.usedLimit || 0)) + amount
+          });
+        }
 
         // 4. Update Loan
         const newRemaining = Math.max(0, loanData.remainingBalance - amount);
@@ -978,7 +1083,7 @@ export const AuthProvider = ({ children }) => {
           status: 'approved',
           createdAt: timestamp,
           details: {
-            fromAccount: fromAccountNum,
+            fromAccount: fromCardNumber ? `Card: ${fromCardNumber}` : actualFromAccount,
             loanId: loanId,
             amount: amount,
             billCategory: 'loan-emi'
@@ -992,7 +1097,7 @@ export const AuthProvider = ({ children }) => {
           type: 'Loan EMI',
           category: 'Debit',
           amount: -amount,
-          fromAccount: fromAccountNum,
+          fromAccount: fromCardNumber ? `Card: ${fromCardNumber}` : actualFromAccount,
           toAccount: loanId,
           remark: `Loan EMI Payment: ${loanId}`,
           timestamp

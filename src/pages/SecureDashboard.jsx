@@ -178,6 +178,7 @@ export default function SecureDashboard() {
     payLoanEMI,
     performTransfer,
     performPayment,
+    payCardBill,
     fetchCardByNumber,
     allUsers
   } = useAuth();
@@ -186,6 +187,7 @@ export default function SecureDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
   const [selectedCard, setSelectedCard] = useState(null); // State for card details modal
+  const [isPayingCardBill, setIsPayingCardBill] = useState(false); // State for card bill payment modal
   const [depositModal, setDepositModal] = useState(false); // State for deposit request modal
   const [depositAmount, setDepositAmount] = useState(''); // Amount for deposit
   const [isDepositing, setIsDepositing] = useState(false); // Loading state for deposit request
@@ -574,7 +576,7 @@ export default function SecureDashboard() {
       setDepositModal(false);
       setDepositAmount('');
       setSelectedAccount(null);
-      setToast('Deposit request submitted! Once approved by the clerk, the amount will be credited to your account.');
+      showToast('Deposit request submitted! Once approved by the clerk, the amount will be credited to your account.');
     } catch (err) {
       console.error("Deposit request failed:", err);
       setFormError('Failed to submit deposit request. Please try again.');
@@ -826,8 +828,11 @@ export default function SecureDashboard() {
             setFormError('Linked account for this debit card not found.');
             return;
           }
-          if (paymentAmt > linkedAcc.balance) {
-            setFormError(`Insufficient funds in linked account! Available: ₹${linkedAcc.balance.toLocaleString()}.`);
+          
+          // Minimum Balance Check for Debit Card
+          const minBalance = linkedAcc.accountType?.toLowerCase() === 'current' ? 10000 : 500;
+          if (linkedAcc.balance - paymentAmt < minBalance) {
+            setFormError(`Insufficient balance! Your linked ${linkedAcc.accountType} account must maintain a minimum balance of ₹${minBalance.toLocaleString()}. Current balance: ₹${linkedAcc.balance.toLocaleString()}.`);
             return;
           }
         }
@@ -837,9 +842,34 @@ export default function SecureDashboard() {
           setFormError('Source account not found.');
           return;
         }
-        if (paymentAmt > sourceAcc.balance) {
-          setFormError(`Insufficient funds! Your ${sourceAcc.accountType} account only has ₹${sourceAcc.balance}.`);
+
+        // Minimum Balance Check
+        const minBalance = sourceAcc.accountType?.toLowerCase() === 'current' ? 10000 : 500;
+        if (sourceAcc.balance - paymentAmt < minBalance) {
+          setFormError(`Insufficient balance! Your ${sourceAcc.accountType} account must maintain a minimum balance of ₹${minBalance.toLocaleString()}. Current balance: ₹${sourceAcc.balance.toLocaleString()}.`);
           return;
+        }
+
+        // Daily Transfer Limit Check for Saving Account (Transfer only)
+        if (modal.type === 'transfer' && sourceAcc.accountType?.toLowerCase() === 'saving') {
+          const dailyLimit = 50000;
+          
+          // Calculate today's transfers for this account from transactions list
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          const todayTransfers = transactions
+            .filter(t => 
+              t.fromAccount === sourceAcc.accountNumber && 
+              t.type === 'Transfer' && 
+              new Date(t.timestamp?.seconds * 1000 || t.timestamp).getTime() >= today.getTime()
+            )
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+          if (todayTransfers + paymentAmt > dailyLimit) {
+            setFormError(`Daily transfer limit exceeded! Saving accounts can transfer up to ₹${dailyLimit.toLocaleString()} per day. Remaining limit: ₹${(dailyLimit - todayTransfers).toLocaleString()}.`);
+            return;
+          }
         }
       }
 
@@ -871,6 +901,7 @@ export default function SecureDashboard() {
             const result = await performTransfer({
               fromAccountId: sourceAcc.id,
               toAccountNumber: formData.recipient,
+              recipientName: formData.recipientName,
               amount: parseFloat(formData.amount),
               remark: formData.remark || 'Fund Transfer'
             });
@@ -999,7 +1030,7 @@ export default function SecureDashboard() {
                         <div className="w-8 h-8 xl:w-10 xl:h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
                           <Wallet className="w-4 h-4 xl:w-5 xl:h-5" />
                         </div>
-                        <span className="text-[10px] xl:text-sm font-black text-slate-400 uppercase tracking-widest">Global Account Balance</span>
+                        <span className="text-[10px] xl:text-sm font-black text-slate-400 uppercase tracking-widest">Total Balance (All Accounts)</span>
                       </div>
                       <div className="flex items-end gap-4">
                         <h2 className="text-5xl xl:text-7xl font-black text-slate-900 tracking-tighter leading-none">
@@ -1184,7 +1215,14 @@ export default function SecureDashboard() {
                       <div className="mt-8 grid grid-cols-2 gap-8">
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</p>
-                          <p className="font-bold text-slate-900 uppercase">{acc.accountType || 'Saving'}</p>
+                          <div className="flex flex-col">
+                            <p className="font-bold text-slate-900 uppercase">{acc.accountType || 'Saving'}</p>
+                            {(acc.accountType?.toLowerCase() === 'saving' || acc.accountType?.toLowerCase() === 'fd') && (
+                              <p className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">
+                                {acc.accountType?.toLowerCase() === 'fd' ? '6% p.a. Int.' : '3% p.a. Int.'}
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Balance</p>
@@ -2185,10 +2223,10 @@ export default function SecureDashboard() {
                       <label className="label">Account Type</label>
                       <select name="accountType" onChange={handleInputChange} value={formData.accountType || ''} className="input" required>
                         <option value="">Select type</option>
-                        <option value="saving">Saving Account</option>
-                        <option value="current">Current Account</option>
-                        <option value="fd">Fixed Deposit</option>
-                        <option value="joint">Joint Account</option>
+                        <option value="saving">Saving Account (3% p.a. Interest)</option>
+                        <option value="current">Current Account (No Interest)</option>
+                        <option value="fd">Fixed Deposit (6% p.a. Interest)</option>
+                        <option value="joint">Joint Account (3% p.a. Interest)</option>
                       </select>
                     </div>
                     <Input label="Initial Deposit (₹)" name="deposit" type="number" placeholder="Min. ₹500" onChange={handleInputChange} value={formData.deposit || ''} required />
@@ -2339,11 +2377,14 @@ export default function SecureDashboard() {
                           required
                         >
                           <option value="">Select source account</option>
-                          {allAccounts.map(acc => (
-                            <option key={acc.id} value={acc.accountNumber}>
-                              {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
-                            </option>
-                          ))}
+                          {allAccounts
+                            .filter(acc => acc.accountType?.toLowerCase() !== 'fd')
+                            .map(acc => (
+                              <option key={acc.id} value={acc.accountNumber}>
+                                {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
+                              </option>
+                            ))
+                          }
                         </select>
                       </div>
                     </div>
@@ -2361,7 +2402,7 @@ export default function SecureDashboard() {
                           >
                             <option value="">Select destination account</option>
                             {allAccounts
-                              .filter(acc => acc.accountNumber !== formData.fromAccount)
+                              .filter(acc => acc.accountNumber !== formData.fromAccount && acc.accountType?.toLowerCase() !== 'fd')
                               .map(acc => (
                                 <option key={acc.id} value={acc.accountNumber}>
                                   {acc.accountType.toUpperCase()} - {acc.accountNumber}
@@ -2375,7 +2416,7 @@ export default function SecureDashboard() {
                           <Input 
                             label="Recipient Name" 
                             name="recipientName" 
-                            placeholder="e.g. Dhruvi" 
+                            placeholder="Enter recipient full name" 
                             onChange={handleInputChange} 
                             value={formData.recipientName || ''}
                             required 
@@ -2383,7 +2424,7 @@ export default function SecureDashboard() {
                           <Input 
                             label="Recipient Account Number" 
                             name="recipient" 
-                            placeholder="Enter destination account number" 
+                            placeholder="SB-XXXXXXXXXXXX" 
                             onChange={handleInputChange} 
                             value={formData.recipient || ''}
                             required 
@@ -2526,13 +2567,16 @@ export default function SecureDashboard() {
                             required
                           >
                             <option value="">Select source account</option>
-                            {allAccounts.map(acc => (
+                          {allAccounts
+                            .filter(acc => acc.accountType?.toLowerCase() !== 'fd')
+                            .map(acc => (
                               <option key={acc.id} value={acc.accountNumber}>
                                 {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance})
                               </option>
-                            ))}
-                          </select>
-                        </div>
+                            ))
+                          }
+                        </select>
+                      </div>
                       )}
                     </div>
 
@@ -3619,7 +3663,14 @@ export default function SecureDashboard() {
               </div>
               <div className="p-8 bg-white border border-slate-100 rounded-[32px] shadow-xl flex flex-col justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Available Balance</p>
+                  <div className="flex justify-between items-start">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Available Balance</p>
+                    {(selectedAccount.accountType?.toLowerCase() === 'saving' || selectedAccount.accountType?.toLowerCase() === 'fd') && (
+                      <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-emerald-100">
+                        {selectedAccount.accountType?.toLowerCase() === 'fd' ? '6% p.a. Interest' : '3% p.a. Interest'}
+                      </span>
+                    )}
+                  </div>
                   <h4 className="text-4xl font-black text-slate-900 tracking-tight">₹{parseFloat(selectedAccount.balance || 0).toLocaleString()}</h4>
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-emerald-500 font-bold text-xs">
@@ -3740,7 +3791,7 @@ export default function SecureDashboard() {
 
       {/* Card Details Modal */}
       <Modal
-        isOpen={!!selectedCard}
+        isOpen={!!selectedCard && !isPayingCardBill}
         onClose={() => setSelectedCard(null)}
         title="Card Detailed Specification"
         size="lg"
@@ -3912,14 +3963,24 @@ export default function SecureDashboard() {
             <div className="flex gap-4">
               <button 
                 onClick={() => {
-                  setSelectedCard(null);
-                  setActiveTab('payments');
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    paymentSourceType: 'card',
-                    fromCard: selectedCard.cardNumber,
-                    billCategory: selectedCard.cardType === 'Credit' ? 'credit-card' : ''
-                  }));
+                  if (selectedCard.cardType === 'Credit') {
+                    setIsPayingCardBill(true);
+                    setFormData({
+                      fromAccount: '',
+                      amount: parseFloat(selectedCard.usedLimit || 0),
+                      cardNumber: selectedCard.cardNumber,
+                      cardId: selectedCard.id
+                    });
+                  } else {
+                    setSelectedCard(null);
+                    setActiveTab('payments');
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      paymentSourceType: 'card',
+                      fromCard: selectedCard.cardNumber,
+                      billCategory: ''
+                    }));
+                  }
                 }}
                 className="flex-1 h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest text-xs hover:bg-slate-900 transition-all shadow-xl flex items-center justify-center gap-3"
               >
@@ -3930,6 +3991,107 @@ export default function SecureDashboard() {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* Credit Card Bill Payment Modal */}
+      <Modal
+        isOpen={isPayingCardBill}
+        onClose={() => { setIsPayingCardBill(false); setFormData({}); setFormError(''); }}
+        title="Pay Credit Card Bill"
+        size="md"
+      >
+        {selectedCard && (
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!formData.fromAccount) {
+              setFormError('Please select a source account.');
+              return;
+            }
+            setSubmitting(true);
+            try {
+              const res = await payCardBill({
+                cardId: selectedCard.id,
+                accountNumber: formData.fromAccount,
+                amount: parseFloat(formData.amount),
+                cardNumber: selectedCard.cardNumber
+              });
+              if (res.success) {
+                showToast(`₹${formData.amount} paid successfully! Card usage updated. ✅`);
+                setIsPayingCardBill(false);
+                setSelectedCard(null);
+              } else {
+                setFormError(res.message);
+              }
+            } catch (err) {
+              setFormError(`Transaction Error: ${err.message || 'Payment failed. Please try again.'}`);
+            } finally {
+              setSubmitting(false);
+            }
+          }} className="space-y-6">
+            <div className="p-6 bg-slate-900 rounded-[32px] text-white space-y-4">
+              <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div>
+                  <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Credit Card</p>
+                  <p className="text-sm font-mono tracking-wider">{selectedCard.cardNumber}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Bill Due</p>
+                  <p className="text-xl font-black text-white">₹{parseFloat(selectedCard.usedLimit || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-bold text-white/40">
+                <Calendar size={12} /> Statement Date: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Payment Amount (₹)</label>
+                <Input
+                  type="number"
+                  value={formData.amount}
+                  readOnly
+                  className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-black text-slate-900"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Pay From Account</label>
+                <select 
+                  name="fromAccount" 
+                  onChange={handleInputChange} 
+                  value={formData.fromAccount || ''}
+                  className="input h-14" 
+                  required
+                >
+                  <option value="">Select source account</option>
+                  {allAccounts
+                    .filter(acc => acc.accountType?.toLowerCase() !== 'fd')
+                    .map(acc => (
+                      <option key={acc.id} value={acc.accountNumber}>
+                        {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance.toLocaleString()})
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+            </div>
+
+            {formError && (
+              <div className="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold border border-rose-100 animate-pulse">
+                {formError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting || parseFloat(selectedCard.usedLimit || 0) <= 0}
+              className="w-full h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-200 flex items-center justify-center gap-3 disabled:opacity-50"
+            >
+              {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Confirm & Pay Bill <IndianRupee size={20} /></>}
+            </button>
+          </form>
         )}
       </Modal>
 

@@ -659,23 +659,65 @@ export const AuthProvider = ({ children }) => {
 
   const performTransfer = async (transferData) => {
     try {
-      const { fromAccountId, toAccountNumber, amount, remark } = transferData;
+      const { fromAccountId, toAccountNumber, recipientName, amount, remark } = transferData;
       
-      // 1. Check sender balance
+      // 1. Check sender balance and account type constraints
       const senderRef = doc(db, 'accounts', fromAccountId);
       const senderSnap = await getDoc(senderRef);
       if (!senderSnap.exists()) throw new Error('Sender account not found');
       const senderData = senderSnap.data();
-      if (senderData.balance < amount) throw new Error('Insufficient balance');
 
-      // 2. Find recipient account
+      // Minimum Balance Constraints
+      const minBalance = senderData.accountType?.toLowerCase() === 'current' ? 10000 : 500;
+      if (senderData.balance - amount < minBalance) {
+        throw new Error(`Insufficient balance. ${senderData.accountType} account must maintain a minimum balance of ₹${minBalance.toLocaleString()}.`);
+      }
+
+      // Daily Transfer Limit for Saving Account
+      if (senderData.accountType?.toLowerCase() === 'saving') {
+        const dailyLimit = 50000;
+        
+        // Get today's transfers for this account
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const transRef = collection(db, 'transactions');
+        const qDaily = query(
+          transRef,
+          where('fromAccount', '==', senderData.accountNumber)
+        );
+        
+        const dailySnap = await getDocs(qDaily);
+        const dailyTotal = dailySnap.docs
+          .map(doc => doc.data())
+          .filter(t => {
+            const tDate = t.timestamp?.toDate ? t.timestamp.toDate() : new Date(t.timestamp);
+            return t.type === 'Transfer' && tDate >= today;
+          })
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        if (dailyTotal + amount > dailyLimit) {
+          throw new Error(`Daily transfer limit exceeded. Saving accounts can transfer up to ₹${dailyLimit.toLocaleString()} per day. Remaining limit: ₹${(dailyLimit - dailyTotal).toLocaleString()}.`);
+        }
+      }
+
+      // 2. Find recipient account and validate name
       const accountsRef = collection(db, 'accounts');
       const q = query(accountsRef, where('accountNumber', '==', toAccountNumber));
       const recipientSnap = await getDocs(q);
-      if (recipientSnap.empty) throw new Error('Recipient account not found');
+      
+      if (recipientSnap.empty) {
+        throw new Error('Account information is wrong: Account number not found.');
+      }
+      
       const recipientDoc = recipientSnap.docs[0];
       const recipientRef = doc(db, 'accounts', recipientDoc.id);
       const recipientData = recipientDoc.data();
+
+      // Check if recipient name matches (case-insensitive)
+      if (recipientName && recipientData.userName?.toLowerCase() !== recipientName.toLowerCase()) {
+        throw new Error('Account information is wrong: Recipient name does not match the account holder.');
+      }
 
       // 3. Update balances
       await updateDoc(senderRef, { balance: senderData.balance - amount });
@@ -738,6 +780,62 @@ export const AuthProvider = ({ children }) => {
         updateServiceRequestStatus,
         initializeServiceMaster,
     performTransfer,
+    payCardBill: async (billData) => {
+      try {
+        const { cardId, accountNumber, amount, cardNumber } = billData;
+        console.log(`[Banking] Starting bill payment for card ${cardNumber} from account ${accountNumber}...`);
+
+        if (!userProfile) throw new Error('User profile not found. Please log in again.');
+
+        // 1. Get Account
+        const accountsRef = collection(db, 'accounts');
+        const qAcc = query(accountsRef, where('accountNumber', '==', accountNumber));
+        const accSnap = await getDocs(qAcc);
+        if (accSnap.empty) throw new Error(`Source account ${accountNumber} not found.`);
+        const accDoc = accSnap.docs[0];
+        const accData = accDoc.data();
+
+        // 2. Check Balance
+        const currentBalance = parseFloat(accData.balance || 0);
+        if (currentBalance < amount) throw new Error(`Insufficient balance. Available: ₹${currentBalance.toLocaleString()}.`);
+
+        // 3. Update Account Balance
+        await updateDoc(doc(db, 'accounts', accDoc.id), {
+          balance: currentBalance - amount,
+          lastTransactionDate: serverTimestamp()
+        });
+
+        // 4. Update Card Used Amount (Reset to 0 or subtract amount)
+        const cardRef = doc(db, 'Card_tbl', cardId);
+        const cardSnap = await getDoc(cardRef);
+        if (!cardSnap.exists()) throw new Error('Card record not found in database.');
+        
+        const currentUsed = parseFloat(cardSnap.data()?.usedLimit || 0);
+        await updateDoc(cardRef, {
+          usedLimit: Math.max(0, currentUsed - amount)
+        });
+
+        // 5. Record Transaction
+        const timestamp = serverTimestamp();
+        await addDoc(collection(db, 'transactions'), {
+          userId: userProfile.uid,
+          userName: `${userProfile.firstName} ${userProfile.lastName}`,
+          type: 'Card Bill Payment',
+          category: 'Debit',
+          amount: -amount,
+          fromAccount: accountNumber,
+          toAccount: `Card: ${cardNumber}`,
+          remark: `Credit Card Bill Repayment`,
+          timestamp
+        });
+
+        console.log(`[Banking] Card bill payment of ₹${amount} successful ✅`);
+        return { success: true };
+      } catch (err) {
+        console.error("[Banking] Card bill payment failed:", err);
+        return { success: false, message: err.message };
+      }
+    },
     performDeposit: async (depositData) => {
       try {
         const { accountId, amount, userName, userId, accountNumber } = depositData;
@@ -815,8 +913,11 @@ export const AuthProvider = ({ children }) => {
           const accData = accDoc.data();
           const accRef = doc(db, 'accounts', accDoc.id);
 
-          // 3. Check balance
-          if (accData.balance < amount) throw new Error("Insufficient balance");
+          // 3. Check balance and account type constraints
+          const minBalance = accData.accountType?.toLowerCase() === 'current' ? 10000 : 500;
+          if (accData.balance - amount < minBalance) {
+            throw new Error(`Insufficient balance. ${accData.accountType} account must maintain a minimum balance of ₹${minBalance.toLocaleString()}. Current balance: ₹${accData.balance.toLocaleString()}.`);
+          }
 
           // 4. Update balance
           await updateDoc(accRef, {

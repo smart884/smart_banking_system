@@ -8,6 +8,7 @@ import About from './pages/About';
 import Services from './pages/Services';
 import Contact from './pages/Contact';
 import Login from './pages/Login';
+import OTPLogin from './pages/OTPLogin';
 import Registration from './pages/Registration';
 import ApplyCreditCard from './pages/ApplyCreditCard';
 import ApplyDebitCard from './pages/ApplyDebitCard';
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="/services" element={<Services />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/login-otp" element={<OTPLogin />} />
         <Route path="/register" element={<Registration />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
 

@@ -297,23 +297,54 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       setLoading(true);
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      const user = userCredential.user;
+      // 1. Try real Firebase Auth first
+      let userCredential;
+      let profile;
 
-      // 2. Double-check if a profile exists for this user in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        throw new Error('user-not-found');
+      try {
+        userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const user = userCredential.user;
+
+        // 2. Double-check if a profile exists for this user in Firestore
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (!userDoc.exists()) {
+          throw new Error('user-not-found');
+        }
+
+        profile = { 
+          ...userDoc.data(), 
+          uid: user.uid,
+          role: userDoc.data().role?.toLowerCase() || 'customer'
+        };
+      } catch (authError) {
+        // 2. FALLBACK: Check Firestore for temporary password if standard login fails
+        // This allows users who used the custom OTP reset to log in for this demo.
+        console.log("[Auth] Standard login failed, checking for temporary security key...");
+        const cleanEmail = email.trim().toLowerCase();
+        const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const userDoc = snapshot.docs[0];
+          const userData = userDoc.data();
+          
+          if (userData.tempPassword === password) {
+            console.log("[Auth] Temporary security key verified ✅");
+            profile = { 
+              ...userData, 
+              uid: userData.uid,
+              role: userData.role?.toLowerCase() || 'customer'
+            };
+          } else {
+            throw authError;
+          }
+        } else {
+          throw authError;
+        }
       }
 
-      const profile = { 
-        ...userDoc.data(), 
-        uid: user.uid,
-        role: userDoc.data().role?.toLowerCase() || 'customer'
-      };
       setUserProfile(profile);
       localStorage.setItem('sb_static_user', JSON.stringify(profile));
-
       return { success: true, profile };
     } catch (error) {
       console.error("[Auth] Login error:", error.code || error.message);
@@ -715,7 +746,10 @@ export const AuthProvider = ({ children }) => {
       const recipientData = recipientDoc.data();
 
       // Check if recipient name matches (case-insensitive)
-      if (recipientName && recipientData.userName?.toLowerCase() !== recipientName.toLowerCase()) {
+      const dbName = (recipientData.userName || '').toLowerCase().trim();
+      const inputName = (recipientName || '').toLowerCase().trim();
+      
+      if (inputName && !dbName.includes(inputName) && !inputName.includes(dbName)) {
         throw new Error('Account information is wrong: Recipient name does not match the account holder.');
       }
 
@@ -1265,6 +1299,14 @@ export const AuthProvider = ({ children }) => {
         if (error.code === 'auth/weak-password') message = "New password should be at least 6 characters.";
         return { success: false, message };
       }
+    },
+    loginWithOTP: (user) => {
+      if (user) {
+        setUserProfile(user);
+        localStorage.setItem('sb_static_user', JSON.stringify(user));
+        return { success: true };
+      }
+      return { success: false };
     }
   };
 

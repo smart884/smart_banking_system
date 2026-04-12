@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../components/SecureAuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { db } from '../lib/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import emailjs from '@emailjs/browser';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { 
@@ -43,7 +44,8 @@ import {
   Database,
   ChevronRight,
   Check,
-  Loader2
+  Loader2,
+  KeyRound
 } from 'lucide-react';
 
 import Modal from '../components/ui/Modal';
@@ -163,6 +165,122 @@ const MOCK_CONTACTS = [
   { name: 'Dhruvi', number: '9123456782' }
 ];
 
+const PaymentOtpVerification = ({ onVerify, onCancel, paymentOtp, paymentOtpInput, setPaymentOtpInput, setFormError }) => {
+  const otpRefs = useRef([]);
+  const [localSubmitting, setLocalSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Auto-verify when 6 digits are entered
+    if (paymentOtpInput.length === 6 && !localSubmitting) {
+      if (paymentOtpInput === paymentOtp) {
+        setLocalSubmitting(true);
+        onVerify();
+      } else {
+        setFormError("Invalid verification code. Protocol mismatch. ❌");
+      }
+    }
+  }, [paymentOtpInput, paymentOtp, localSubmitting]); // Removed onVerify/setFormError from deps to prevent re-triggers
+
+  const handleOtpChange = (e, index) => {
+    if (localSubmitting) return;
+    const val = e.target.value.replace(/\D/g, '');
+    const newOtpArr = paymentOtpInput.split('').slice(0, 6);
+    
+    // Ensure array has enough elements
+    while (newOtpArr.length < 6) newOtpArr.push('');
+    
+    newOtpArr[index] = val.slice(-1);
+    const newOtp = newOtpArr.join('').slice(0, 6);
+    setPaymentOtpInput(newOtp);
+
+    // Focus next input if a digit was entered
+    if (val && index < 5) {
+      otpRefs.current[index + 1].focus();
+    }
+  };
+
+  const handleKeyDown = (e, index) => {
+    if (localSubmitting) return;
+    if (e.key === 'Backspace') {
+      if (!paymentOtpInput[index] && index > 0) {
+        // Move focus back if current is empty
+        otpRefs.current[index - 1].focus();
+      } else {
+        // Clear current digit if not empty
+        const newOtpArr = paymentOtpInput.split('');
+        newOtpArr[index] = '';
+        setPaymentOtpInput(newOtpArr.join(''));
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in zoom-in-95 duration-300">
+      <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-xl text-center space-y-6">
+        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-2">
+          {localSubmitting ? <Loader2 className="w-10 h-10 animate-spin" /> : <ShieldCheck size={40} />}
+        </div>
+        <div className="space-y-2">
+          <h4 className="text-2xl font-black text-slate-900 tracking-tight">
+            {localSubmitting ? 'Verifying Protocol...' : 'Security Verification'}
+          </h4>
+          <p className="text-slate-500 font-medium text-sm">
+            {localSubmitting ? 'Authenticating with SmartBank Quantum Guard' : 'A 6-digit verification code has been dispatched to your registered email protocol.'}
+          </p>
+        </div>
+        
+        <div className="space-y-6">
+          <div className="flex justify-center gap-3">
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
+              <input
+                key={idx}
+                ref={el => otpRefs.current[idx] = el}
+                type="text"
+                maxLength="1"
+                disabled={localSubmitting}
+                value={paymentOtpInput[idx] || ''}
+                onChange={(e) => handleOtpChange(e, idx)}
+                onKeyDown={(e) => handleKeyDown(e, idx)}
+                className={`w-12 h-16 bg-slate-50 border border-slate-100 rounded-xl text-center text-2xl font-black focus:outline-none focus:ring-4 focus:ring-blue-600/10 focus:bg-white transition-all ${localSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              />
+            ))}
+          </div>
+          
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            {localSubmitting ? 'QUANTUM GUARD ACTIVE' : 'Authenticating via SmartBank Quantum Guard'}
+          </p>
+        </div>
+
+        <div className="flex gap-4 pt-4">
+          <button 
+            type="button" 
+            onClick={onCancel}
+            disabled={localSubmitting}
+            className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            onClick={() => {
+              if (paymentOtpInput === paymentOtp) {
+                setLocalSubmitting(true);
+                onVerify();
+              } else {
+                setFormError("Invalid verification code. Protocol mismatch. ❌");
+              }
+            }}
+            disabled={paymentOtpInput.length !== 6 || localSubmitting}
+            className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
+          >
+            {localSubmitting ? <Loader2 size={18} className="animate-spin" /> : <>Verify & Pay <Check size={18} strokeWidth={3} /></>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function SecureDashboard() {
   const navigate = useNavigate();
   const { 
@@ -181,10 +299,17 @@ export default function SecureDashboard() {
     performPayment,
     payCardBill,
     fetchCardByNumber,
+    changePassword,
     allUsers
   } = useAuth();
   const [showBalance, setShowBalance] = useState(true);
   const [toast, setToast] = useState(null);
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAccount, setSelectedAccount] = useState(null); // State for account details modal
   const [selectedCard, setSelectedCard] = useState(null); // State for card details modal
@@ -209,12 +334,57 @@ export default function SecureDashboard() {
   const [fetchedCard, setFetchedCard] = useState(null); // State for fetched card details
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastPayment, setLastPayment] = useState(null);
+  const [formError, setFormError] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordFormData, setPasswordFormData] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
+
+  // OTP Payment Verification States
+  const [paymentOtp, setPaymentOtp] = useState('');
+  const [isPaymentOtpSent, setIsPaymentOtpSent] = useState(false);
+  const [paymentOtpInput, setPaymentOtpInput] = useState('');
+  const [isPaymentOtpVerifying, setIsPaymentOtpVerifying] = useState(false);
+
+  const handleSendPaymentOTP = async (e) => {
+    if (e) e.preventDefault();
+    if (!userProfile?.email) {
+      setFormError("User email protocol not found.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError("");
+
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setPaymentOtp(newOtp);
+
+    const SERVICE_ID = "service_4vexw9b";
+    const TEMPLATE_ID = "template_heo7zv8";
+    const PUBLIC_KEY = "I5wWVwwuUcAFQsyFb";
+
+    try {
+      await emailjs.send(SERVICE_ID, TEMPLATE_ID, {
+        email: userProfile.email,
+        to_email: userProfile.email,
+        user_email: userProfile.email,
+        recipient_email: userProfile.email,
+        email_to: userProfile.email,
+        otp: newOtp,
+        to_name: `${userProfile.firstName} ${userProfile.lastName}`
+      }, PUBLIC_KEY);
+      
+      setIsPaymentOtpSent(true);
+      showToast(`Verification OTP dispatched to ${userProfile.email} ✅`);
+    } catch (err) {
+      setFormError("Failed to dispatch verification code. Please check your connection.");
+      setIsPaymentOtpSent(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -230,7 +400,6 @@ export default function SecureDashboard() {
     setIsChangingPassword(true);
     setFormError("");
     try {
-      const { changePassword } = useAuth();
       const result = await changePassword(passwordFormData.currentPassword, passwordFormData.newPassword);
       if (result.success) {
         showToast("Password updated successfully! ✅");
@@ -745,13 +914,7 @@ export default function SecureDashboard() {
 
   const [formData, setFormData] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState('');
   const [formStep, setFormStep] = useState(1);
-
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const openModal = (type, title) => {
     setModal({ isOpen: true, type, title });
@@ -776,6 +939,10 @@ export default function SecureDashboard() {
     setDepositModal(false);
     setDepositAmount('');
     setIsDepositing(false);
+    setPaymentOtp('');
+    setIsPaymentOtpSent(false);
+    setPaymentOtpInput('');
+    setIsPaymentOtpVerifying(false);
   };
 
   const handleDepositRequest = async (e) => {
@@ -831,6 +998,10 @@ export default function SecureDashboard() {
     setSelectedPlan(null);
     setCcStep(1);
     setCcPaymentStatus(null);
+    setPaymentOtp('');
+    setIsPaymentOtpSent(false);
+    setPaymentOtpInput('');
+    setIsPaymentOtpVerifying(false);
   };
 
   // Mock function to "Check Bill"
@@ -1113,6 +1284,12 @@ export default function SecureDashboard() {
 
     setSubmitting(true);
     console.log(`[USER-DASHBOARD] Submitting ${modal.type}...`, formData);
+
+    // OTP Verification for Transfer & Bill Pay
+    if ((modal.type === 'transfer' || modal.type === 'bill-pay') && !isPaymentOtpSent) {
+      handleSendPaymentOTP();
+      return;
+    }
     
     const userName = `${userProfile?.firstName || 'User'} ${userProfile?.lastName || ''}`.trim();
     
@@ -2775,28 +2952,44 @@ export default function SecureDashboard() {
                   </div>
 
                   <div className="pt-6">
-                    <button 
-                      type="submit" 
-                      disabled={submitting} 
-                      className={`w-full h-16 rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest ${
-                        transferSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
-                      }`}
-                    >
-                      {submitting ? (
-                        <div className="flex items-center gap-3">
-                          <Loader2 className="w-6 h-6 animate-spin" />
-                          Processing...
-                        </div>
-                      ) : transferSuccess ? (
-                        <div className="flex items-center gap-3 animate-in zoom-in duration-300">
-                          <CheckCircle2 className="w-7 h-7" />
-                          Transfer Complete
-                        </div>
-                      ) : (
-                        <>Transfer Now <ArrowRight size={22} /></>
-                      )}
-                    </button>
-                    <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>
+                    {isPaymentOtpSent ? (
+                      <PaymentOtpVerification 
+                        onVerify={() => {
+                          const fakeEvent = { preventDefault: () => {} };
+                          handleSubmit(fakeEvent);
+                        }} 
+                        onCancel={() => setIsPaymentOtpSent(false)} 
+                        paymentOtp={paymentOtp}
+                        paymentOtpInput={paymentOtpInput}
+                        setPaymentOtpInput={setPaymentOtpInput}
+                        setFormError={setFormError}
+                      />
+                    ) : (
+                      <>
+                        <button 
+                          type="submit" 
+                          disabled={submitting} 
+                          className={`w-full h-16 rounded-[24px] shadow-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 text-lg font-black uppercase tracking-widest ${
+                            transferSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                          }`}
+                        >
+                          {submitting ? (
+                            <div className="flex items-center gap-3">
+                              <Loader2 className="w-6 h-6 animate-spin" />
+                              Processing...
+                            </div>
+                          ) : transferSuccess ? (
+                            <div className="flex items-center gap-3 animate-in zoom-in duration-300">
+                              <CheckCircle2 className="w-7 h-7" />
+                              Transfer Complete
+                            </div>
+                          ) : (
+                            <>Transfer Now <ArrowRight size={22} /></>
+                          )}
+                        </button>
+                        <p className="text-center text-[10px] font-black text-slate-400 uppercase tracking-widest mt-6">Securely processed by SmartBank Core Engine</p>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -2897,13 +3090,27 @@ export default function SecureDashboard() {
                           <Input label="Amount (₹)" name="amount" type="number" placeholder="0.00" onChange={handleInputChange} required />
                         </div>
                         <div className="pt-4">
-                          <button 
-                            type="submit" 
-                            disabled={submitting}
-                            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
-                          >
-                            {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Payment <ArrowRight size={18} /></>}
-                          </button>
+                          {isPaymentOtpSent ? (
+                            <PaymentOtpVerification 
+                              onVerify={() => {
+                                const fakeEvent = { preventDefault: () => {} };
+                                handleSubmit(fakeEvent);
+                              }} 
+                              onCancel={() => setIsPaymentOtpSent(false)} 
+                              paymentOtp={paymentOtp}
+                              paymentOtpInput={paymentOtpInput}
+                              setPaymentOtpInput={setPaymentOtpInput}
+                              setFormError={setFormError}
+                            />
+                          ) : (
+                            <button 
+                              type="submit" 
+                              disabled={submitting}
+                              className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-xs"
+                            >
+                              {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Submit Payment <ArrowRight size={18} /></>}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2930,6 +3137,10 @@ export default function SecureDashboard() {
                       }
                       
                       setFormError('');
+                      handleSendPaymentOTP();
+                    };
+
+                    const executeLoanPayment = async () => {
                       setSubmitting(true);
                       try {
                         const result = await payLoanEMI(formData.refNum, parseFloat(formData.amount), formData.fromAccount, formData.fromCard);
@@ -2949,137 +3160,150 @@ export default function SecureDashboard() {
                     return (
                       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                         {loanStep === 1 && (
-                          <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-                              <div className="flex gap-4 items-end">
-                                <div className="flex-1">
-                                  <Input 
-                                    label="Loan ID / Reference ID" 
-                                    name="refNum" 
-                                    placeholder="Enter Loan ID (e.g. L-XXXXXXXXX)" 
-                                    onChange={handleInputChange} 
-                                    value={formData.refNum || ''} 
-                                    required 
-                                  />
-                                </div>
-                                <button 
-                                  type="button"
-                                  onClick={() => handleFetchLoan()}
-                                  disabled={checkingBill || !formData.refNum}
-                                  className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
-                                >
-                                  {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Fetch Details'}
-                                </button>
-                              </div>
+                          <>
+                            {isPaymentOtpSent ? (
+                              <PaymentOtpVerification 
+                                onVerify={executeLoanPayment} 
+                                onCancel={() => setIsPaymentOtpSent(false)} 
+                                paymentOtp={paymentOtp}
+                                paymentOtpInput={paymentOtpInput}
+                                setPaymentOtpInput={setPaymentOtpInput}
+                                setFormError={setFormError}
+                              />
+                            ) : (
+                              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+                                  <div className="flex gap-4 items-end">
+                                    <div className="flex-1">
+                                      <Input 
+                                        label="Loan ID / Reference ID" 
+                                        name="refNum" 
+                                        placeholder="Enter Loan ID (e.g. L-XXXXXXXXX)" 
+                                        onChange={handleInputChange} 
+                                        value={formData.refNum || ''} 
+                                        required 
+                                      />
+                                    </div>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleFetchLoan()}
+                                      disabled={checkingBill || !formData.refNum}
+                                      className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
+                                    >
+                                      {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Fetch Details'}
+                                    </button>
+                                  </div>
 
-                              {fetchedLoan && (
-                                <div className="animate-in fade-in slide-in-from-top-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                  <Input 
-                                    label="Loan Holder Name" 
-                                    name="cardHolder" 
-                                    value={fetchedLoan.userName || ''} 
-                                    readOnly
-                                    required 
-                                  />
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Loan Status</p>
-                                    <span className={`px-3 py-1 ${fetchedLoan.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'} text-[10px] font-black rounded-full uppercase tracking-tighter`}>
-                                      {fetchedLoan.status}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            {fetchedLoan && (
-                              <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
-                                {/* Loan Overview Cards */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Amount</p>
-                                    <p className="text-xs font-black text-slate-900">₹{fetchedLoan.loanAmount?.toLocaleString()}</p>
-                                  </div>
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest Rate</p>
-                                    <p className="text-xs font-black text-slate-900">{fetchedLoan.interestRate}</p>
-                                  </div>
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining</p>
-                                    <p className="text-xs font-black text-blue-600">₹{fetchedLoan.remainingBalance?.toLocaleString()}</p>
-                                  </div>
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Amount</p>
-                                    <p className="text-xs font-black text-emerald-600">₹{(fetchedLoan.paidAmount || 0).toLocaleString()}</p>
-                                  </div>
+                                  {fetchedLoan && (
+                                    <div className="animate-in fade-in slide-in-from-top-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                      <Input 
+                                        label="Loan Holder Name" 
+                                        name="cardHolder" 
+                                        value={fetchedLoan.userName || ''} 
+                                        readOnly
+                                        required 
+                                      />
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Loan Status</p>
+                                        <span className={`px-3 py-1 ${fetchedLoan.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'} text-[10px] font-black rounded-full uppercase tracking-tighter`}>
+                                          {fetchedLoan.status}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly EMI</p>
-                                    <p className="text-sm font-black text-slate-900">₹{emiAmount.toLocaleString()}</p>
-                                  </div>
-                                  <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Next Due Date</p>
-                                    <p className="text-sm font-black text-blue-600">
-                                      {(() => {
-                                        const nextEmi = fetchedLoan.emiSchedule?.find(item => item.status === 'Pending');
-                                        return nextEmi ? new Date(nextEmi.dueDate).toLocaleDateString() : 'Paid Off';
-                                      })()}
-                                    </p>
-                                  </div>
-                                </div>
+                                {fetchedLoan && (
+                                  <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+                                    {/* Loan Overview Cards */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Amount</p>
+                                        <p className="text-xs font-black text-slate-900">₹{fetchedLoan.loanAmount?.toLocaleString()}</p>
+                                      </div>
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Interest Rate</p>
+                                        <p className="text-xs font-black text-slate-900">{fetchedLoan.interestRate}</p>
+                                      </div>
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Remaining</p>
+                                        <p className="text-xs font-black text-blue-600">₹{fetchedLoan.remainingBalance?.toLocaleString()}</p>
+                                      </div>
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Amount</p>
+                                        <p className="text-xs font-black text-emerald-600">₹{(fetchedLoan.paidAmount || 0).toLocaleString()}</p>
+                                      </div>
+                                    </div>
 
-                                <div className="p-6 bg-blue-600 rounded-[32px] border border-blue-500 shadow-xl shadow-blue-100 flex items-center justify-between text-white">
-                                  <div>
-                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Payable EMI</p>
-                                    <p className="text-3xl font-black">₹{totalPayable.toLocaleString()}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Verification</p>
-                                    <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-black rounded-full uppercase tracking-tighter border border-white/30 backdrop-blur-sm">Verified Loan</span>
-                                  </div>
-                                </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly EMI</p>
+                                        <p className="text-sm font-black text-slate-900">₹{emiAmount.toLocaleString()}</p>
+                                      </div>
+                                      <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Next Due Date</p>
+                                        <p className="text-sm font-black text-blue-600">
+                                          {(() => {
+                                            const nextEmi = fetchedLoan.emiSchedule?.find(item => item.status === 'Pending');
+                                            return nextEmi ? new Date(nextEmi.dueDate).toLocaleDateString() : 'Paid Off';
+                                          })()}
+                                        </p>
+                                      </div>
+                                    </div>
 
-                                <div className="space-y-2">
-                                  <label className="label">Payment Amount (₹)</label>
-                                  <div className="relative">
-                                    <input 
-                                      type="number" 
-                                      name="amount" 
-                                      className={`input ${isAmountBelowEmi ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
-                                      placeholder="Enter amount to pay" 
-                                      onChange={handleInputChange} 
-                                      value={formData.amount || ''} 
-                                      required 
-                                    />
-                                    {isAmountBelowEmi && (
-                                      <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
-                                        Min ₹{emiAmount.toLocaleString()} required for EMI
-                                      </p>
-                                    )}
+                                    <div className="p-6 bg-blue-600 rounded-[32px] border border-blue-500 shadow-xl shadow-blue-100 flex items-center justify-between text-white">
+                                      <div>
+                                        <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Payable EMI</p>
+                                        <p className="text-3xl font-black">₹{totalPayable.toLocaleString()}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest mb-1">Verification</p>
+                                        <span className="px-3 py-1 bg-white/20 text-white text-[10px] font-black rounded-full uppercase tracking-tighter border border-white/30 backdrop-blur-sm">Verified Loan</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="label">Payment Amount (₹)</label>
+                                      <div className="relative">
+                                        <input 
+                                          type="number" 
+                                          name="amount" 
+                                          className={`input ${isAmountBelowEmi ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
+                                          placeholder="Enter amount to pay" 
+                                          onChange={handleInputChange} 
+                                          value={formData.amount || ''} 
+                                          required 
+                                        />
+                                        {isAmountBelowEmi && (
+                                          <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
+                                            Min ₹{emiAmount.toLocaleString()} required for EMI
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
+                                )}
+
+                                <div className="flex gap-4 pt-4">
+                                  <button 
+                                    type="button" 
+                                    onClick={closeModal}
+                                    className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    onClick={handlePayment}
+                                    disabled={submitting || !fetchedLoan || isAmountBelowEmi}
+                                    className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
+                                  >
+                                    {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Confirm Payment <ArrowRight size={18} /></>}
+                                  </button>
                                 </div>
                               </div>
                             )}
-
-                            <div className="flex gap-4 pt-4">
-                              <button 
-                                type="button" 
-                                onClick={closeModal}
-                                className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={handlePayment}
-                                disabled={submitting || !fetchedLoan || isAmountBelowEmi}
-                                className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
-                              >
-                                {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Confirm Payment <ArrowRight size={18} /></>}
-                              </button>
-                            </div>
-                          </div>
+                          </>
                         )}
 
                         {loanStep === 2 && (
@@ -3154,6 +3378,10 @@ export default function SecureDashboard() {
                       }
                       
                       setFormError('');
+                      handleSendPaymentOTP();
+                    };
+
+                    const executeCCPayment = async () => {
                       setSubmitting(true);
                       
                       // Process payment via the performPayment helper
@@ -3201,151 +3429,164 @@ export default function SecureDashboard() {
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                       {/* Step 1: CC Details Form */}
                       {ccStep === 1 && (
-                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="flex gap-4 items-end">
-                              <div className="flex-1">
+                        <>
+                          {isPaymentOtpSent ? (
+                            <PaymentOtpVerification 
+                              onVerify={executeCCPayment} 
+                              onCancel={() => setIsPaymentOtpSent(false)} 
+                              paymentOtp={paymentOtp}
+                              paymentOtpInput={paymentOtpInput}
+                              setPaymentOtpInput={setPaymentOtpInput}
+                              setFormError={setFormError}
+                            />
+                          ) : (
+                            <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="flex gap-4 items-end">
+                                  <div className="flex-1">
+                                    <Input 
+                                      label="Credit Card Number" 
+                                      name="refNum" 
+                                      maxLength="19"
+                                      placeholder="XXXX XXXX XXXX XXXX" 
+                                      onChange={handleInputChange} 
+                                      value={formData.refNum || ''} 
+                                      required 
+                                    />
+                                  </div>
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleFetchCard(formData.refNum)}
+                                    disabled={checkingBill || !formData.refNum || formData.refNum.replace(/\s/g, '').length !== 16}
+                                    className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
+                                  >
+                                    {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
+                                  </button>
+                                </div>
                                 <Input 
-                                  label="Credit Card Number" 
-                                  name="refNum" 
-                                  maxLength="19"
-                                  placeholder="XXXX XXXX XXXX XXXX" 
-                                  onChange={handleInputChange} 
-                                  value={formData.refNum || ''} 
+                                  label="Card Holder Name" 
+                                  name="cardHolder" 
+                                  placeholder="Fetching holder name..." 
+                                  value={fetchedCard?.userName || ''} 
+                                  readOnly
                                   required 
                                 />
                               </div>
-                              <button 
-                                type="button"
-                                onClick={() => handleFetchCard(formData.refNum)}
-                                disabled={checkingBill || !formData.refNum || formData.refNum.replace(/\s/g, '').length !== 16}
-                                className="h-14 px-6 bg-blue-600 text-white font-black rounded-2xl shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50 text-xs uppercase tracking-widest whitespace-nowrap"
-                              >
-                                {checkingBill ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
-                              </button>
-                            </div>
-                            <Input 
-                              label="Card Holder Name" 
-                              name="cardHolder" 
-                              placeholder="Fetching holder name..." 
-                              value={fetchedCard?.userName || ''} 
-                              readOnly
-                              required 
-                            />
-                          </div>
 
-                          {showCcAmountFields && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
-                              <div className="space-y-2">
-                                <label className="label">Bank Name</label>
-                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-                                  <Landmark className="w-4 h-4 text-blue-600" />
-                                  <span className="text-sm font-black text-slate-900">SmartBank (Internal)</span>
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <label className="label">Amount to Pay (₹)</label>
-                                <div className="relative">
-                                  <input 
-                                    type="number" 
-                                    name="amount" 
-                                    className={`input ${isAmountBelowMin ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
-                                    placeholder="0.00" 
-                                    onChange={handleInputChange} 
-                                    value={formData.amount || ''} 
-                                    required 
-                                    readOnly={!isCustomAmount}
-                                  />
-                                  {isAmountBelowMin && (
-                                    <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
-                                      Min ₹{minDue.toLocaleString()} required
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {showCcAmountFields && (
-                            <>
-                              {/* Extra Features: Outstanding & Due Date */}
-                              <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
-                                  <p className="text-sm font-black text-slate-900">₹{outstanding.toLocaleString()}</p>
-                                </div>
-                                <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
-                                  <p className="text-sm font-black text-rose-500">{dueDate}</p>
-                                </div>
-                              </div>
-
-                              {/* Amount Options (Radio Buttons) */}
-                              <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Payment Option</label>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                  {[
-                                    { id: 'total', label: 'Total Amount', value: totalDue },
-                                    { id: 'min', label: 'Minimum Due', value: minDue },
-                                    { id: 'custom', label: 'Custom Amount', value: '' }
-                                  ].map((option) => (
-                                    <label 
-                                      key={option.id}
-                                      className={`flex items-center justify-between p-4 bg-white border-2 rounded-2xl cursor-pointer transition-all ${
-                                        formData.ccAmountOption === option.id 
-                                          ? 'border-blue-600 ring-4 ring-blue-50 shadow-md' 
-                                          : 'border-slate-100 hover:border-blue-100'
-                                      }`}
-                                    >
-                                      <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{option.label}</span>
-                                        {option.value !== '' && <span className="text-xs font-bold text-blue-600">₹{option.value.toLocaleString()}</span>}
-                                      </div>
+                              {showCcAmountFields && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
+                                  <div className="space-y-2">
+                                    <label className="label">Bank Name</label>
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                                      <Landmark className="w-4 h-4 text-blue-600" />
+                                      <span className="text-sm font-black text-slate-900">SmartBank (Internal)</span>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="label">Amount to Pay (₹)</label>
+                                    <div className="relative">
                                       <input 
-                                        type="radio" 
-                                        name="ccAmountOption" 
-                                        value={option.id} 
-                                        checked={formData.ccAmountOption === option.id}
-                                        onChange={(e) => {
-                                          const { value } = e.target;
-                                          setFormData(prev => ({
-                                            ...prev,
-                                            ccAmountOption: value,
-                                            amount: value === 'total' ? totalDue : (value === 'min' ? minDue : '')
-                                          }));
-                                        }}
-                                        className="hidden"
+                                        type="number" 
+                                        name="amount" 
+                                        className={`input ${isAmountBelowMin ? 'border-rose-500 focus:border-rose-600 bg-rose-50' : ''}`} 
+                                        placeholder="0.00" 
+                                        onChange={handleInputChange} 
+                                        value={formData.amount || ''} 
+                                        required 
+                                        readOnly={!isCustomAmount}
                                       />
-                                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                        formData.ccAmountOption === option.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200'
-                                      }`}>
-                                        {formData.ccAmountOption === option.id && <Check size={10} strokeWidth={4} />}
-                                      </div>
-                                    </label>
-                                  ))}
+                                      {isAmountBelowMin && (
+                                        <p className="absolute -bottom-5 left-0 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-in slide-in-from-top-1">
+                                          Min ₹{minDue.toLocaleString()} required
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </>
-                          )}
+                              )}
 
-                          <div className="flex gap-4 pt-4">
-                            <button 
-                              type="button" 
-                              onClick={closeModal}
-                              className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button 
-                              type="button" 
-                              onClick={handleCCPayment}
-                              disabled={submitting || !showCcAmountFields || isAmountBelowMin || !formData.fromAccount}
-                              className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
-                            >
-                              {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay Now <ArrowRight size={18} /></>}
-                            </button>
-                          </div>
-                        </div>
+                              {showCcAmountFields && (
+                                <>
+                                  {/* Extra Features: Outstanding & Due Date */}
+                                  <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
+                                      <p className="text-sm font-black text-slate-900">₹{outstanding.toLocaleString()}</p>
+                                    </div>
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Due Date</p>
+                                      <p className="text-sm font-black text-rose-500">{dueDate}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Amount Options (Radio Buttons) */}
+                                  <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Payment Option</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      {[
+                                        { id: 'total', label: 'Total Amount', value: totalDue },
+                                        { id: 'min', label: 'Minimum Due', value: minDue },
+                                        { id: 'custom', label: 'Custom Amount', value: '' }
+                                      ].map((option) => (
+                                        <label 
+                                          key={option.id}
+                                          className={`flex items-center justify-between p-4 bg-white border-2 rounded-2xl cursor-pointer transition-all ${
+                                            formData.ccAmountOption === option.id 
+                                              ? 'border-blue-600 ring-4 ring-blue-50 shadow-md' 
+                                              : 'border-slate-100 hover:border-blue-100'
+                                          }`}
+                                        >
+                                          <div className="flex flex-col">
+                                            <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{option.label}</span>
+                                            {option.value !== '' && <span className="text-xs font-bold text-blue-600">₹{option.value.toLocaleString()}</span>}
+                                          </div>
+                                          <input 
+                                            type="radio" 
+                                            name="ccAmountOption" 
+                                            value={option.id} 
+                                            checked={formData.ccAmountOption === option.id}
+                                            onChange={(e) => {
+                                              const { value } = e.target;
+                                              setFormData(prev => ({
+                                                ...prev,
+                                                ccAmountOption: value,
+                                                amount: value === 'total' ? totalDue : (value === 'min' ? minDue : '')
+                                              }));
+                                            }}
+                                            className="hidden"
+                                          />
+                                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                            formData.ccAmountOption === option.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200'
+                                          }`}>
+                                            {formData.ccAmountOption === option.id && <Check size={10} strokeWidth={4} />}
+                                          </div>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+
+                              <div className="flex gap-4 pt-4">
+                                <button 
+                                  type="button" 
+                                  onClick={closeModal}
+                                  className="w-1/3 h-14 bg-slate-200 text-slate-600 font-black rounded-2xl uppercase tracking-widest text-xs hover:bg-slate-300 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={handleCCPayment}
+                                  disabled={submitting || !showCcAmountFields || isAmountBelowMin || !formData.fromAccount}
+                                  className="w-2/3 h-14 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
+                                >
+                                  {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Pay Now <ArrowRight size={18} /></>}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Step 2: Success / Failure Result */}
@@ -3486,20 +3727,37 @@ export default function SecureDashboard() {
                                 <p className="text-4xl font-black tracking-tight">₹{billAmount.toLocaleString()}</p>
                               </div>
                               <div className="flex flex-col gap-3">
-                                <button 
-                                  type="submit" 
-                                  disabled={submitting}
-                                  className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
-                                >
-                                  {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Pay Now <ArrowRight size={20} /></>}
-                                </button>
-                                <button 
-                                  type="button" 
-                                  onClick={() => setBillStep(1)}
-                                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-                                >
-                                  Cancel & Back
-                                </button>
+                                {isPaymentOtpSent ? (
+                                  <PaymentOtpVerification 
+                                    onVerify={() => {
+                                      // Manually trigger the form submit logic
+                                      const fakeEvent = { preventDefault: () => {} };
+                                      handleSubmit(fakeEvent);
+                                    }} 
+                                    onCancel={() => setIsPaymentOtpSent(false)} 
+                                    paymentOtp={paymentOtp}
+                                    paymentOtpInput={paymentOtpInput}
+                                    setPaymentOtpInput={setPaymentOtpInput}
+                                    setFormError={setFormError}
+                                  />
+                                ) : (
+                                  <>
+                                     <button 
+                                       type="submit" 
+                                       disabled={submitting}
+                                       className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+                                     >
+                                       {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Pay Now <ArrowRight size={20} /></>}
+                                     </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => setBillStep(1)}
+                                      className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                    >
+                                      Cancel & Back
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </>
                           ) : (
@@ -3808,20 +4066,36 @@ export default function SecureDashboard() {
                           </div>
 
                           <div className="flex flex-col gap-3">
-                            <button 
-                              type="submit" 
-                              disabled={submitting}
-                              className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
-                            >
-                              {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Proceed to Pay <ArrowRight size={20} /></>}
-                            </button>
-                            <button 
-                              type="button" 
-                              onClick={() => setRechargeStep(3)}
-                              className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-                            >
-                              Change Plan
-                            </button>
+                            {isPaymentOtpSent ? (
+                              <PaymentOtpVerification 
+                                onVerify={() => {
+                                  const fakeEvent = { preventDefault: () => {} };
+                                  handleSubmit(fakeEvent);
+                                }} 
+                                onCancel={() => setIsPaymentOtpSent(false)} 
+                                paymentOtp={paymentOtp}
+                                paymentOtpInput={paymentOtpInput}
+                                setPaymentOtpInput={setPaymentOtpInput}
+                                setFormError={setFormError}
+                              />
+                            ) : (
+                              <>
+                                <button 
+                                  type="submit" 
+                                  disabled={submitting}
+                                  className="w-full h-16 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+                                >
+                                  {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Proceed to Pay <ArrowRight size={20} /></>}
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => setRechargeStep(3)}
+                                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                  Change Plan
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -4306,101 +4580,132 @@ export default function SecureDashboard() {
       {/* Credit Card Bill Payment Modal */}
       <Modal
         isOpen={isPayingCardBill}
-        onClose={() => { setIsPayingCardBill(false); setFormData({}); setFormError(''); }}
+        onClose={() => { 
+          setIsPayingCardBill(false); 
+          setFormData({}); 
+          setFormError(''); 
+          setPaymentOtp('');
+          setIsPaymentOtpSent(false);
+          setPaymentOtpInput('');
+        }}
         title="Pay Credit Card Bill"
         size="md"
       >
         {selectedCard && (
-          <form onSubmit={async (e) => {
-            e.preventDefault();
-            if (!formData.fromAccount) {
-              setFormError('Please select a source account.');
-              return;
-            }
-            setSubmitting(true);
-            try {
-              const res = await payCardBill({
-                cardId: selectedCard.id,
-                accountNumber: formData.fromAccount,
-                amount: parseFloat(formData.amount),
-                cardNumber: selectedCard.cardNumber
-              });
-              if (res.success) {
-                showToast(`₹${formData.amount} paid successfully! Card usage updated. ✅`);
-                setIsPayingCardBill(false);
-                setSelectedCard(null);
-              } else {
-                setFormError(res.message);
-              }
-            } catch (err) {
-              setFormError(`Transaction Error: ${err.message || 'Payment failed. Please try again.'}`);
-            } finally {
-              setSubmitting(false);
-            }
-          }} className="space-y-6">
-            <div className="p-6 bg-slate-900 rounded-[32px] text-white space-y-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                <div>
-                  <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Credit Card</p>
-                  <p className="text-sm font-mono tracking-wider">{selectedCard.cardNumber}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Bill Due</p>
-                  <p className="text-xl font-black text-white">₹{parseFloat(selectedCard.usedLimit || 0).toLocaleString()}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-white/40">
-                <Calendar size={12} /> Statement Date: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Payment Amount (₹)</label>
-                <Input
-                  type="number"
-                  value={formData.amount}
-                  readOnly
-                  className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-black text-slate-900"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Pay From Account</label>
-                <select 
-                  name="fromAccount" 
-                  onChange={handleInputChange} 
-                  value={formData.fromAccount || ''}
-                  className="input h-14" 
-                  required
-                >
-                  <option value="">Select source account</option>
-                  {allAccounts
-                    .filter(acc => acc.accountType?.toLowerCase() !== 'fd')
-                    .map(acc => (
-                      <option key={acc.id} value={acc.accountNumber}>
-                        {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance.toLocaleString()})
-                      </option>
-                    ))
+          <div className="space-y-6">
+            {isPaymentOtpSent ? (
+              <PaymentOtpVerification 
+                onVerify={async () => {
+                  setSubmitting(true);
+                  try {
+                    const res = await payCardBill({
+                      cardId: selectedCard.id,
+                      accountNumber: formData.fromAccount,
+                      amount: parseFloat(formData.amount),
+                      cardNumber: selectedCard.cardNumber
+                    });
+                    if (res.success) {
+                      showToast(`₹${formData.amount} paid successfully! Card usage updated. ✅`);
+                      setIsPayingCardBill(false);
+                      setSelectedCard(null);
+                      setPaymentOtp('');
+                      setIsPaymentOtpSent(false);
+                      setPaymentOtpInput('');
+                    } else {
+                      setFormError(res.message);
+                    }
+                  } catch (err) {
+                    setFormError(`Transaction Error: ${err.message || 'Payment failed. Please try again.'}`);
+                  } finally {
+                    setSubmitting(false);
                   }
-                </select>
-              </div>
-            </div>
+                }} 
+                onCancel={() => setIsPaymentOtpSent(false)} 
+                paymentOtp={paymentOtp}
+                paymentOtpInput={paymentOtpInput}
+                setPaymentOtpInput={setPaymentOtpInput}
+                setFormError={setFormError}
+              />
+            ) : (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (!formData.fromAccount) {
+                  setFormError('Please select a source account.');
+                  return;
+                }
+                const sourceAccount = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
+                if (!sourceAccount || sourceAccount.balance < parseFloat(formData.amount)) {
+                  setFormError('Insufficient balance in selected account.');
+                  return;
+                }
+                setFormError('');
+                handleSendPaymentOTP();
+              }} className="space-y-6">
+                <div className="p-6 bg-slate-900 rounded-[32px] text-white space-y-4">
+                  <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                    <div>
+                      <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Credit Card</p>
+                      <p className="text-sm font-mono tracking-wider">{selectedCard.cardNumber}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Total Bill Due</p>
+                      <p className="text-xl font-black text-white">₹{parseFloat(selectedCard.usedLimit || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-white/40">
+                    <Calendar size={12} /> Statement Date: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                </div>
 
-            {formError && (
-              <div className="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold border border-rose-100 animate-pulse">
-                {formError}
-              </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Payment Amount (₹)</label>
+                    <Input
+                      type="number"
+                      value={formData.amount}
+                      readOnly
+                      className="h-14 rounded-2xl bg-slate-50 border-slate-100 font-black text-slate-900"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest px-1">Pay From Account</label>
+                    <select 
+                      name="fromAccount" 
+                      onChange={handleInputChange} 
+                      value={formData.fromAccount || ''}
+                      className="input h-14" 
+                      required
+                    >
+                      <option value="">Select source account</option>
+                      {allAccounts
+                        .filter(acc => acc.accountType?.toLowerCase() !== 'fd')
+                        .map(acc => (
+                          <option key={acc.id} value={acc.accountNumber}>
+                            {acc.accountType.toUpperCase()} - {acc.accountNumber} (₹{acc.balance.toLocaleString()})
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                {formError && (
+                  <div className="p-4 bg-rose-50 text-rose-500 rounded-2xl text-xs font-bold border border-rose-100 animate-pulse">
+                    {formError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting || parseFloat(selectedCard.usedLimit || 0) <= 0}
+                  className="w-full h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-200 flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Confirm & Pay Bill <IndianRupee size={20} /></>}
+                </button>
+              </form>
             )}
-
-            <button
-              type="submit"
-              disabled={submitting || parseFloat(selectedCard.usedLimit || 0) <= 0}
-              className="w-full h-16 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest shadow-xl shadow-blue-200 flex items-center justify-center gap-3 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Confirm & Pay Bill <IndianRupee size={20} /></>}
-            </button>
-          </form>
+          </div>
         )}
       </Modal>
 

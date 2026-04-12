@@ -19,6 +19,7 @@ import {
   Smartphone,
   Briefcase,
   FileText,
+  Download,
   ShieldCheck,
   Eye,
   EyeOff,
@@ -206,26 +207,217 @@ export default function SecureDashboard() {
   const [loanStatus, setLoanStatus] = useState(null); // 'success' or 'failure'
   const [fetchedLoan, setFetchedLoan] = useState(null); // State for fetched loan details
   const [fetchedCard, setFetchedCard] = useState(null); // State for fetched card details
-  const [notification, setNotification] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [lastPayment, setLastPayment] = useState(null);
+
+  const downloadReceipt = (paymentData) => {
+    const data = paymentData || lastPayment;
+    if (!data) return;
+
+    // Helper to trigger a real file download so it appears in "Recent download history"
+    const triggerFileDownload = (content, filename) => {
+      const blob = new Blob([content], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const receiptHtml = `
+      <html>
+        <head>
+          <title>SmartBank Payment Receipt</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; display: flex; flex-direction: column; align-items: center; }
+            .receipt-box { width: 450px; border: 1px solid #eee; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); background: white; }
+            .header { text-align: center; border-bottom: 2px dashed #eee; padding-bottom: 20px; margin-bottom: 20px; }
+            .logo { font-size: 24px; font-weight: 900; text-transform: uppercase; }
+            .logo span { color: #3b82f6; }
+            .success-badge { display: inline-block; background: #ecfdf5; color: #10b981; padding: 5px 15px; rounded: 20px; font-size: 10px; font-weight: 900; text-transform: uppercase; margin-top: 10px; border-radius: 20px; }
+            .amount { text-align: center; font-size: 36px; font-weight: 900; margin: 20px 0; color: #1e293b; }
+            .details { font-size: 13px; color: #64748b; }
+            .detail-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
+            .detail-label { font-weight: 600; }
+            .detail-value { font-weight: 800; color: #1e293b; }
+            .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #94a3b8; }
+            .actions { margin-top: 30px; display: flex; gap: 15px; justify-content: center; }
+            .btn { padding: 10px 20px; border-radius: 12px; font-size: 12px; font-weight: 900; text-transform: uppercase; cursor: pointer; border: none; transition: all 0.2s; }
+            .btn-print { background: #1e293b; color: white; }
+            .btn-download { background: #3b82f6; color: white; }
+            @media print { .actions { display: none; } body { padding: 0; } .receipt-box { box-shadow: none; border: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-box">
+            <div class="header">
+              <div class="logo">SMART<span>BANK</span></div>
+              <div class="success-badge">Transaction Successful</div>
+            </div>
+            <div class="amount">₹${parseFloat(data.amount).toLocaleString()}</div>
+            <div class="details">
+              <div class="detail-row">
+                <span class="detail-label">Payment For</span>
+                <span class="detail-value">${data.type || 'Bill Payment'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Source</span>
+                <span class="detail-value">${data.fromCard || data.fromAccount}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Date & Time</span>
+                <span class="detail-value">${new Date().toLocaleString()}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Ref ID</span>
+                <span class="detail-value">${Math.random().toString(36).substr(2, 9).toUpperCase()}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Remark</span>
+                <span class="detail-value">${data.remark || 'N/A'}</span>
+              </div>
+            </div>
+            <div class="footer">
+              Thank you for banking with SmartBank.<br>This is a digital receipt.
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-print" onclick="window.print()">Print Receipt</button>
+            <button class="btn btn-download" id="downloadBtn">Download File</button>
+          </div>
+          <script>
+            document.getElementById('downloadBtn').onclick = function() {
+              const html = document.documentElement.outerHTML;
+              const blob = new Blob([html], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'SmartBank_Receipt_${Date.now()}.html';
+              a.click();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    // Trigger immediate file download so it appears in history
+    triggerFileDownload(receiptHtml, `SmartBank_Receipt_${Date.now()}.html`);
+
+    // Also open the printable view as before
+    const printWindow = window.open('', '_blank');
+    printWindow.document.open();
+    printWindow.document.write(receiptHtml);
+    printWindow.document.close();
+  };
+
+  const downloadHistory = () => {
+    if (transactionHistory.length === 0) {
+      showToast('No transactions to download.');
+      return;
+    }
+
+    // Helper to trigger a real file download
+    const triggerFileDownload = (content, filename) => {
+      const blob = new Blob([content], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const headers = ['Date', 'Description', 'Amount', 'Type', 'Status'];
+    const rows = transactionHistory.map(tx => `
+      <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding: 12px; text-align: left;">${tx.date}</td>
+        <td style="padding: 12px; text-align: left;">${tx.name}</td>
+        <td style="padding: 12px; text-align: right; color: ${tx.isNegative ? '#000' : '#10b981'}; font-weight: bold;">${tx.amount}</td>
+        <td style="padding: 12px; text-align: left;">${tx.isNegative ? 'Debit' : 'Credit'}</td>
+        <td style="padding: 12px; text-align: left;">${tx.status}</td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>SmartBank Statement - ${new Date().toLocaleDateString()}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { font-size: 28px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+            .logo span { color: #3b82f6; }
+            .title { font-size: 20px; font-weight: 800; color: #666; text-transform: uppercase; letter-spacing: 2px; }
+            .user-info { margin-bottom: 30px; }
+            .user-info p { margin: 5px 0; font-size: 14px; font-weight: 600; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background-color: #f8fafc; color: #64748b; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; padding: 12px; border-bottom: 2px solid #eee; }
+            .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
+            .actions { margin-bottom: 20px; text-align: right; }
+            .btn { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+            @media print { .actions { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="actions">
+             <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+          </div>
+          <div class="header">
+            <div class="logo">SMART<span>BANK</span></div>
+            <div class="title">Account Statement</div>
+          </div>
+          <div class="user-info">
+            <p>Customer: ${userProfile?.firstName} ${userProfile?.lastName}</p>
+            <p>Email: ${userProfile?.email || 'N/A'}</p>
+            <p>Generated on: ${new Date().toLocaleString()}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: left;">Date</th>
+                <th style="text-align: left;">Description</th>
+                <th style="text-align: right;">Amount</th>
+                <th style="text-align: left;">Type</th>
+                <th style="text-align: left;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+          <div class="footer">
+            This is a computer-generated document and does not require a physical signature. SmartBank E-Banking System.
+          </div>
+          <script>
+            window.onload = function() { 
+              // Don't auto-print here because we triggered a file download already
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    // Trigger immediate file download so it appears in history
+    triggerFileDownload(htmlContent, `SmartBank_Statement_${new Date().toLocaleDateString().replace(/\//g, '-')}.html`);
+
+    // Also open the printable view
+    const printWindow = window.open('', '_blank');
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    showToast('Statement generated and downloaded! 📥');
+  };
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
   const userRequests = requests.filter(req => 
     req.userId === userProfile?.uid || 
     (!req.userId && req.userName === `${userProfile?.firstName} ${userProfile?.lastName}`)
   );
-  useEffect(() => {
-    if (serviceRequests.length > 0) {
-      const latestRequest = serviceRequests[0];
-      if (latestRequest.status === 'S') {
-        setNotification(`Your ${latestRequest.type} has been Approved! ✅`);
-      } else if (latestRequest.status === 'R') {
-        setNotification(`Your ${latestRequest.type} has been Rejected. ❌`);
-      }
-      setTimeout(() => setNotification(null), 5000);
-    }
-  }, [serviceRequests]);
-
   // Helper to get Date object from various timestamp formats
   const getDateObject = (ts) => {
     if (!ts) return new Date();
@@ -896,6 +1088,14 @@ export default function SecureDashboard() {
       
       const processTransfer = async () => {
         try {
+          const paymentDetails = {
+            amount: parseFloat(formData.amount),
+            fromAccount: formData.fromAccount,
+            fromCard: formData.fromCard,
+            type: isTransfer ? 'Fund Transfer' : (formData.billCategory || modal.title),
+            remark: formData.remark || formData.note || (isTransfer ? 'Fund Transfer' : `${modal.title}: ${formData.billCategory || 'Bill'}`)
+          };
+
           if (isTransfer) {
             const sourceAcc = allAccounts.find(acc => acc.accountNumber === formData.fromAccount);
             const result = await performTransfer({
@@ -932,8 +1132,15 @@ export default function SecureDashboard() {
             });
           }
 
+          setLastPayment(paymentDetails);
+
           setTimeout(() => {
             showToast(`${isTransfer ? `₹${formData.amount} transferred` : 'Bill paid'} successfully! ✅`);
+            
+            // Ask user if they want to download receipt via a custom confirm or just auto-trigger
+            // Auto-triggering is cleaner as per user request "it gunrate recipt and this recipt user can download"
+            downloadReceipt(paymentDetails);
+
             closeModal();
             setTransferSuccess(false);
             setSubmitting(false);
@@ -1021,57 +1228,6 @@ export default function SecureDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8 mb-12">
               {/* Main Wallet Card - Use Case: Check Balance */}
               <div className="lg:col-span-2 space-y-6 xl:space-y-8">
-                <div className="bg-white rounded-[32px] xl:rounded-[48px] p-8 xl:p-12 shadow-xl border border-slate-50 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-32 bg-blue-600/5 rounded-full blur-[100px] -mr-32 -mt-32"></div>
-                  
-                  <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-8 xl:gap-10">
-                    <div>
-                      <div className="flex items-center gap-3 mb-4 xl:mb-6">
-                        <div className="w-8 h-8 xl:w-10 xl:h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                          <Wallet className="w-4 h-4 xl:w-5 xl:h-5" />
-                        </div>
-                        <span className="text-[10px] xl:text-sm font-black text-slate-400 uppercase tracking-widest">Total Balance (All Accounts)</span>
-                      </div>
-                      <div className="flex items-end gap-4">
-                        <h2 className="text-5xl xl:text-7xl font-black text-slate-900 tracking-tighter leading-none">
-                          {showBalance ? `₹${totalBalance.toLocaleString()}` : '••••••'}
-                        </h2>
-                        <button 
-                          onClick={() => setShowBalance(!showBalance)}
-                          className="mb-1 xl:mb-2 p-2 xl:p-3 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
-                        >
-                          {showBalance ? <EyeOff className="w-5 h-5 xl:w-6 xl:h-6" /> : <Eye className="w-5 h-5 xl:w-6 xl:h-6" />}
-                        </button>
-                      </div>
-                      <div className="mt-6 xl:mt-8 flex items-center gap-4">
-                        <span className="bg-green-100 text-green-700 px-3 xl:px-4 py-1.5 xl:py-2 rounded-full text-[10px] xl:text-xs font-black uppercase tracking-widest">+12.4% THIS MONTH</span>
-                        <span className="text-slate-400 text-xs xl:text-sm font-medium italic">Updated 2 mins ago</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-3 xl:gap-4 min-w-[180px] xl:min-w-[200px]">
-                      <div className="p-4 xl:p-6 bg-slate-50 rounded-2xl xl:rounded-[32px] border border-slate-100 flex items-center gap-4">
-                        <div className="w-10 h-10 xl:w-12 xl:h-12 bg-white rounded-xl xl:rounded-2xl flex items-center justify-center text-green-500 shadow-sm">
-                          <ArrowUpRight className="w-5 h-5 xl:w-6 xl:h-6" />
-                        </div>
-                        <div>
-                          <p className="text-[8px] xl:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Inflow</p>
-                          <p className="text-base xl:text-lg font-black text-slate-900 leading-none mt-1">₹{totalInflow.toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <div className="p-4 xl:p-6 bg-slate-50 rounded-2xl xl:rounded-[32px] border border-slate-100 flex items-center gap-4">
-                        <div className="w-10 h-10 xl:w-12 xl:h-12 bg-white rounded-xl xl:rounded-2xl flex items-center justify-center text-red-500 shadow-sm">
-                          <ArrowDownLeft className="w-5 h-5 xl:w-6 xl:h-6" />
-                        </div>
-                        <div>
-                          <p className="text-[8px] xl:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Outflow</p>
-                          <p className="text-base xl:text-lg font-black text-slate-900 leading-none mt-1">₹{totalOutflow.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Recent Transactions Table - Use Case: Transaction History */}
                 <div className="bg-white rounded-[32px] xl:rounded-[40px] shadow-xl border border-slate-50 overflow-hidden">
                   <div className="p-6 xl:p-8 border-b border-slate-50 flex items-center justify-between">
@@ -1099,8 +1255,19 @@ export default function SecureDashboard() {
                                 </div>
                               </td>
                               <td className="py-5 xl:py-6 px-8 xl:px-10 text-right">
-                                <div className="flex flex-col items-end">
+                                <div className="flex flex-col items-end gap-1">
                                   <p className={`text-base xl:text-xl font-black ${!tx.isNegative ? 'text-emerald-600' : 'text-slate-900'}`}>{tx.amount}</p>
+                                  <button 
+                                    onClick={() => downloadReceipt({
+                                      amount: tx.amountVal,
+                                      fromAccount: tx.fromAccountNum,
+                                      type: tx.name,
+                                      remark: tx.name
+                                    })}
+                                    className="p-1.5 hover:bg-blue-50 text-slate-300 hover:text-blue-600 rounded-lg transition-all"
+                                  >
+                                    <Download size={12} />
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -1351,8 +1518,23 @@ export default function SecureDashboard() {
                             </div>
                           </td>
                           <td className="px-8 py-6 text-right">
-                            <p className={`text-lg font-black ${tx.isNegative ? 'text-slate-900' : 'text-emerald-600'}`}>{tx.amount}</p>
-                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Processed ✅</span>
+                            <div className="flex flex-col items-end gap-2">
+                              <p className={`text-lg font-black ${tx.isNegative ? 'text-slate-900' : 'text-emerald-600'}`}>{tx.amount}</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Processed ✅</span>
+                                <button 
+                                  onClick={() => downloadReceipt({
+                                    amount: tx.amountVal,
+                                    fromAccount: tx.fromAccountNum,
+                                    type: tx.name,
+                                    remark: tx.name
+                                  })}
+                                  className="p-1.5 bg-slate-50 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
+                                >
+                                  <Download size={12} />
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1779,9 +1961,17 @@ export default function SecureDashboard() {
                 <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Financial Statement</h2>
                 <p className="text-slate-500 font-medium text-lg mt-2">Complete record of all credits and debits.</p>
               </div>
-              <button onClick={() => setActiveTab('dashboard')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all flex items-center gap-3">
-                <LayoutIcon size={20} /> Back to Overview
-              </button>
+              <div className="flex gap-4">
+                <button 
+                  onClick={downloadHistory}
+                  className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all flex items-center gap-3"
+                >
+                  <Download size={20} /> Download Statement
+                </button>
+                <button onClick={() => setActiveTab('dashboard')} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all flex items-center gap-3">
+                  <LayoutIcon size={20} /> Back to Overview
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden">
@@ -1811,13 +2001,27 @@ export default function SecureDashboard() {
                             </div>
                           </td>
                           <td className="py-8 px-10 text-right">
-                            <div className="flex flex-col items-end">
+                            <div className="flex flex-col items-end gap-3">
                               <p className={`text-2xl font-black tracking-tighter ${!tx.isNegative ? 'text-emerald-600' : 'text-slate-900'}`}>
                                 {tx.amount}
                               </p>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                {tx.isNegative ? 'Debit' : 'Credit'}
-                              </p>
+                              <div className="flex items-center gap-4">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {tx.isNegative ? 'Debit' : 'Credit'}
+                                </p>
+                                <button 
+                                  onClick={() => downloadReceipt({
+                                    amount: tx.amountVal,
+                                    fromAccount: tx.fromAccountNum,
+                                    type: tx.name,
+                                    remark: tx.name
+                                  })}
+                                  className="p-2 bg-slate-50 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
+                                  title="Download Receipt"
+                                >
+                                  <Download size={14} />
+                                </button>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -2019,15 +2223,6 @@ export default function SecureDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
-      {notification && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-500">
-          <div className={`${notification.includes('Approved') ? 'bg-emerald-600' : 'bg-rose-600'} text-white px-10 py-5 rounded-[24px] shadow-2xl flex items-center gap-4 border border-white/10 backdrop-blur-xl`}>
-            {notification.includes('Approved') ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-            <p className="font-black text-sm uppercase tracking-widest">{notification}</p>
-          </div>
-        </div>
-      )}
-
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-500">

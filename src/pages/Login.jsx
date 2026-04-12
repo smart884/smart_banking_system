@@ -7,7 +7,7 @@ import Container from '../components/ui/Container';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
-import { ShieldCheck, LogIn, Sparkles, Fingerprint } from 'lucide-react';
+import { ShieldCheck, LogIn, Sparkles, Fingerprint, Mail, KeyRound, ArrowLeft, Send } from 'lucide-react';
 
 /**
  * Premium Login Page (Static Version)
@@ -15,11 +15,14 @@ import { ShieldCheck, LogIn, Sparkles, Fingerprint } from 'lucide-react';
  */
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, forgotPassword } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -47,6 +50,32 @@ export default function Login() {
     } catch (err) {
       console.error("Login failed:", err);
       setError("An unexpected error occurred. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+      
+      const result = await forgotPassword(forgotEmail);
+      if (result.success) {
+        setSuccess("Password reset link sent! Please check your email inbox.");
+        setForgotEmail("");
+      } else {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError("Failed to process request. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -94,85 +123,147 @@ export default function Login() {
 
             {/* Right Column: Login Card */}
             <div className="w-full max-w-md mx-auto">
-              <Card className="p-10 md:p-14 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] rounded-[48px] border-none bg-white relative overflow-hidden group">
+              <Card className="p-10 md:p-14 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] rounded-[48px] border-none bg-white relative overflow-hidden group min-h-[500px]">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-700" />
                 
                 <div className="relative z-10">
-                  <div className="mb-10 text-center lg:text-left">
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Welcome Back</h2>
-                    <p className="text-slate-500 font-medium">Enter your credentials to continue.</p>
-                  </div>
+                  {!showForgot ? (
+                    <>
+                      <div className="mb-10 text-center lg:text-left">
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Welcome Back</h2>
+                        <p className="text-slate-500 font-medium">Enter your credentials to continue.</p>
+                      </div>
 
-                  {error && (
-                    <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
-                      {error}
+                      {error && (
+                        <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+                          {error}
+                        </div>
+                      )}
+
+                      <form onSubmit={handleSubmit} className="space-y-8">
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-1">Email Protocol</label>
+                            <Input 
+                              name="email" 
+                              type="email" 
+                              placeholder="rahul@smartbank.com" 
+                              value={email} 
+                              onChange={(e) => setEmail(e.target.value)} 
+                              required 
+                              className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-1">Security Key</label>
+                            <Input 
+                              name="password" 
+                              type="password" 
+                              placeholder="••••••••" 
+                              value={password} 
+                              onChange={(e) => setPassword(e.target.value)} 
+                              required 
+                              className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end text-sm">
+                          <button 
+                            type="button" 
+                            onClick={() => { setShowForgot(true); setError(""); setSuccess(""); }}
+                            className="font-black text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-widest text-xs"
+                          >
+                            Forgot Password?
+                          </button>
+                        </div>
+
+                        <Button 
+                          type="submit" 
+                          disabled={loading} 
+                          className="h-16 w-full rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xl font-black shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 active:scale-95 transition-all"
+                        >
+                          {loading ? (
+                            <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <LogIn size={22} />
+                              Authenticate
+                        </>
+                          )}
+                        </Button>
+
+                        <div className="text-center pt-4">
+                          <p className="text-slate-500 font-medium">
+                            New to the platform? {' '}
+                            <button 
+                              type="button" 
+                              onClick={() => navigate('/register')} 
+                              className="text-blue-600 font-black hover:underline underline-offset-4"
+                            >
+                              Join the Evolution
+                            </button>
+                          </p>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                      <button 
+                        onClick={() => { setShowForgot(false); setError(""); setSuccess(""); }}
+                        className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black text-xs uppercase tracking-widest mb-10 transition-colors"
+                      >
+                        <ArrowLeft size={16} /> Back to Login
+                      </button>
+
+                      <div className="mb-10 text-center lg:text-left">
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Password Recovery</h2>
+                        <p className="text-slate-500 font-medium">Enter your registered email to receive a secure reset link.</p>
+                      </div>
+
+                      {error && (
+                        <div className="mb-8 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+                          {error}
+                        </div>
+                      )}
+
+                      {success && (
+                        <div className="mb-8 p-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+                          {success}
+                        </div>
+                      )}
+
+                      <form onSubmit={handleForgotPassword} className="space-y-8">
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-1">Email Protocol</label>
+                          <Input 
+                            name="email" 
+                            type="email" 
+                            placeholder="rahul@smartbank.com" 
+                            value={forgotEmail} 
+                            onChange={(e) => setForgotEmail(e.target.value)} 
+                            required 
+                            className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
+                          />
+                        </div>
+
+                        <Button 
+                          type="submit" 
+                          disabled={loading} 
+                          className="h-16 w-full rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-lg font-black shadow-2xl shadow-slate-200 flex items-center justify-center gap-3 active:scale-95 transition-all uppercase tracking-widest"
+                        >
+                          {loading ? (
+                            <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Send size={20} />
+                              Send Reset Link
+                            </>
+                          )}
+                        </Button>
+                      </form>
                     </div>
                   )}
-
-                  <form onSubmit={handleSubmit} className="space-y-8">
-                    <div className="space-y-6">
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-1">Email Protocol</label>
-                        <Input 
-                          name="email" 
-                          type="email" 
-                          placeholder="rahul@smartbank.com" 
-                          value={email} 
-                          onChange={(e) => setEmail(e.target.value)} 
-                          required 
-                          className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] px-1">Security Key</label>
-                        <Input 
-                          name="password" 
-                          type="password" 
-                          placeholder="••••••••" 
-                          value={password} 
-                          onChange={(e) => setPassword(e.target.value)} 
-                          required 
-                          className="h-16 rounded-2xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-blue-600/10 transition-all font-bold text-lg"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" className="w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-600/20 transition-all" />
-                        <span className="font-bold text-slate-600 group-hover:text-slate-900">Keep me synced</span>
-                      </label>
-                      <button type="button" className="font-black text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-widest text-xs">Recovery</button>
-                    </div>
-
-                    <Button 
-                      type="submit" 
-                      disabled={loading} 
-                      className="h-16 w-full rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xl font-black shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 active:scale-95 transition-all"
-                    >
-                      {loading ? (
-                        <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <LogIn size={22} />
-                          Authenticate
-                        </>
-                      )}
-                    </Button>
-
-                    <div className="text-center pt-4">
-                      <p className="text-slate-500 font-medium">
-                        New to the platform? {' '}
-                        <button 
-                          type="button" 
-                          onClick={() => navigate('/register')} 
-                          className="text-blue-600 font-black hover:underline underline-offset-4"
-                        >
-                          Join the Evolution
-                        </button>
-                      </p>
-                    </div>
-                  </form>
                 </div>
               </Card>
               

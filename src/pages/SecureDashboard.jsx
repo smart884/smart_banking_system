@@ -209,6 +209,41 @@ export default function SecureDashboard() {
   const [fetchedCard, setFetchedCard] = useState(null); // State for fetched card details
   const [showNotifications, setShowNotifications] = useState(false);
   const [lastPayment, setLastPayment] = useState(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordFormData, setPasswordFormData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwordFormData.newPassword !== passwordFormData.confirmPassword) {
+      setFormError("New passwords do not match.");
+      return;
+    }
+    if (passwordFormData.newPassword.length < 6) {
+      setFormError("Password must be at least 6 characters.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setFormError("");
+    try {
+      const { changePassword } = useAuth();
+      const result = await changePassword(passwordFormData.currentPassword, passwordFormData.newPassword);
+      if (result.success) {
+        showToast("Password updated successfully! ✅");
+        closeModal();
+      } else {
+        setFormError(result.message);
+      }
+    } catch (err) {
+      setFormError("An error occurred. Please try again.");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const downloadReceipt = (paymentData) => {
     const data = paymentData || lastPayment;
@@ -733,6 +768,11 @@ export default function SecureDashboard() {
     setSelectedPlan(null);
     setCcStep(1);
     setCcPaymentStatus(null);
+    setPasswordFormData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
     setDepositModal(false);
     setDepositAmount('');
     setIsDepositing(false);
@@ -1152,6 +1192,11 @@ export default function SecureDashboard() {
       };
 
       setTimeout(processTransfer, 1500);
+      return;
+    }
+
+    if (modal.type === 'change-password') {
+      handlePasswordChange(e);
       return;
     }
 
@@ -2269,6 +2314,13 @@ export default function SecureDashboard() {
         </nav>
 
         <div className="mt-auto pt-8 border-t border-slate-800 space-y-4">
+          <button 
+            onClick={() => openModal('change-password', 'Security Settings')} 
+            className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-slate-400 hover:bg-blue-500/10 hover:text-blue-400 transition-all group"
+          >
+            <KeyRound size={22} className="group-hover:rotate-12 transition-transform" />
+            <span className="font-bold tracking-tight text-sm uppercase tracking-widest">Security</span>
+          </button>
           <button onClick={logout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all group">
             <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
             <span className="font-bold tracking-tight text-sm uppercase tracking-widest">Sign Out</span>
@@ -2392,6 +2444,68 @@ export default function SecureDashboard() {
           {formError && (
             <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-bold animate-in fade-in slide-in-from-top-2">
               {formError}
+            </div>
+          )}
+
+          {/* Change Password Logic */}
+          {modal.type === 'change-password' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                <div className="space-y-2">
+                  <label className="label">Current Security Key</label>
+                  <Input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    value={passwordFormData.currentPassword} 
+                    onChange={(e) => setPasswordFormData({...passwordFormData, currentPassword: e.target.value})} 
+                    required 
+                    className="h-14 rounded-2xl"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="label">New Security Key</label>
+                    <Input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={passwordFormData.newPassword} 
+                      onChange={(e) => setPasswordFormData({...passwordFormData, newPassword: e.target.value})} 
+                      required 
+                      className="h-14 rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="label">Confirm New Key</label>
+                    <Input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={passwordFormData.confirmPassword} 
+                      onChange={(e) => setPasswordFormData({...passwordFormData, confirmPassword: e.target.value})} 
+                      required 
+                      className="h-14 rounded-2xl"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center gap-3">
+                <ShieldCheck className="text-blue-600" size={20} />
+                <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest">
+                  Updating your key will re-authenticate your secure session.
+                </p>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isChangingPassword} 
+                className="w-full h-16 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3"
+              >
+                {isChangingPassword ? (
+                  <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>Update Security Key <KeyRound size={20} /></>
+                )}
+              </button>
             </div>
           )}
 

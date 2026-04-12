@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { db, auth as firebaseAuth } from '../lib/firebaseConfig';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { 
   collection, 
   addDoc, 
@@ -1232,6 +1232,38 @@ export const AuthProvider = ({ children }) => {
       } catch (err) {
         console.error("Error fetching card by number:", err);
         return null;
+      }
+    },
+    forgotPassword: async (email) => {
+      try {
+        await sendPasswordResetEmail(firebaseAuth, email);
+        return { success: true };
+      } catch (error) {
+        console.error("[Auth] Forgot password error:", error);
+        let message = "Failed to send reset email. Please try again.";
+        if (error.code === 'auth/user-not-found') message = "No account found with this email.";
+        if (error.code === 'auth/invalid-email') message = "Invalid email format.";
+        return { success: false, message };
+      }
+    },
+    changePassword: async (currentPassword, newPassword) => {
+      try {
+        const user = firebaseAuth.currentUser;
+        if (!user) throw new Error("No user logged in");
+
+        // Re-authenticate user before changing password
+        const credential = EmailAuthProvider.credential(user.email, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+        
+        // Update password
+        await updatePassword(user, newPassword);
+        return { success: true };
+      } catch (error) {
+        console.error("[Auth] Change password error:", error);
+        let message = "Failed to update password. Please try again.";
+        if (error.code === 'auth/wrong-password') message = "Current password is incorrect.";
+        if (error.code === 'auth/weak-password') message = "New password should be at least 6 characters.";
+        return { success: false, message };
       }
     }
   };

@@ -1283,20 +1283,66 @@ export const AuthProvider = ({ children }) => {
     changePassword: async (currentPassword, newPassword) => {
       try {
         const user = firebaseAuth.currentUser;
-        if (!user) throw new Error("No user logged in");
+        const userId = userProfile?.uid;
+        const userEmail = userProfile?.email;
 
-        // Re-authenticate user before changing password
-        const credential = EmailAuthProvider.credential(user.email, currentPassword);
-        await reauthenticateWithCredential(user, credential);
+        if (!userId) throw new Error("No user session found");
+
+        let updateSuccess = false;
+
+        // 1. Try Firebase Auth update if user is signed in there
+        if (user && userEmail) {
+          try {
+            const credential = EmailAuthProvider.credential(userEmail, currentPassword);
+            await reauthenticateWithCredential(user, credential);
+            await updatePassword(user, newPassword);
+            updateSuccess = true;
+            console.log("[Auth] Firebase Auth password updated successfully ✅");
+          } catch (authError) {
+            console.warn("[Auth] Firebase Auth re-authentication failed, checking Firestore fallback...", authError.code);
+            // We only continue if the error is related to authentication mismatch, 
+            // allowing us to check the Firestore temporary password.
+            if (authError.code !== 'auth/wrong-password' && authError.code !== 'auth/user-not-found') {
+              throw authError;
+            }
+          }
+        }
+
+        // 2. Sync with Firestore 'tempPassword' to ensure fallback login works
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
         
-        // Update password
-        await updatePassword(user, newPassword);
-        return { success: true };
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          
+          // Verify current password against Firestore 'tempPassword' if Auth update wasn't successful
+          if (!updateSuccess) {
+            if (userData.tempPassword === currentPassword) {
+               updateSuccess = true;
+               console.log("[Auth] Temporary security key verified in Firestore ✅");
+            } else {
+               throw new Error("auth/wrong-password");
+            }
+          }
+
+          // Update the user's temporary/security key in Firestore to keep it in sync
+          await updateDoc(userRef, {
+            tempPassword: newPassword,
+            lastPasswordUpdate: serverTimestamp()
+          });
+
+          // Update local profile state
+          setUserProfile(prev => ({ ...prev, tempPassword: newPassword }));
+          return { success: true };
+        } else {
+          throw new Error("user-not-found");
+        }
       } catch (error) {
         console.error("[Auth] Change password error:", error);
         let message = "Failed to update password. Please try again.";
-        if (error.code === 'auth/wrong-password') message = "Current password is incorrect.";
-        if (error.code === 'auth/weak-password') message = "New password should be at least 6 characters.";
+        if (error.code === 'auth/wrong-password' || error.message === 'auth/wrong-password') message = "Current security key is incorrect.";
+        if (error.code === 'auth/weak-password') message = "New key should be at least 6 characters.";
+        if (error.message === 'No user session found') message = "Session expired. Please log in again.";
         return { success: false, message };
       }
     },

@@ -3,6 +3,7 @@ import Layout from '../components/Layout';
 import Section from '../components/ui/Section';
 import Container from '../components/ui/Container';
 import { Shield, Target, Award, Users, Landmark, Globe } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function About() {
   return (
@@ -99,12 +100,9 @@ export default function About() {
             Join the millions of people who have already made the switch to a smarter way of banking.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="h-16 px-10 rounded-2xl bg-white text-blue-600 font-black text-lg hover:bg-blue-50 transition-colors shadow-xl">
+            <Link to="/join" className="h-16 px-10 rounded-2xl bg-white text-blue-600 flex items-center justify-center font-black text-lg hover:bg-blue-50 transition-colors shadow-xl">
               Create an Account
-            </button>
-            <button className="h-16 px-10 rounded-2xl bg-blue-700 text-white font-black text-lg hover:bg-blue-800 transition-colors">
-              Contact Sales
-            </button>
+            </Link>
           </div>
         </Container>
       </Section>

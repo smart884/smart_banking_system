@@ -536,14 +536,12 @@ export default function SecureDashboard() {
       document.body.removeChild(link);
     };
 
-    const headers = ['Date', 'Description', 'Amount', 'Type', 'Status'];
     const rows = transactionHistory.map(tx => `
       <tr style="border-bottom: 1px solid #eee;">
         <td style="padding: 12px; text-align: left;">${tx.date}</td>
         <td style="padding: 12px; text-align: left;">${tx.name}</td>
         <td style="padding: 12px; text-align: right; color: ${tx.isNegative ? '#000' : '#10b981'}; font-weight: bold;">${tx.amount}</td>
         <td style="padding: 12px; text-align: left;">${tx.isNegative ? 'Debit' : 'Credit'}</td>
-        <td style="padding: 12px; text-align: left;">${tx.status}</td>
       </tr>
     `).join('');
 
@@ -587,7 +585,6 @@ export default function SecureDashboard() {
                 <th style="text-align: left;">Description</th>
                 <th style="text-align: right;">Amount</th>
                 <th style="text-align: left;">Type</th>
-                <th style="text-align: left;">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -615,6 +612,113 @@ export default function SecureDashboard() {
     printWindow.document.write(htmlContent);
     printWindow.document.close();
     showToast('Statement generated and downloaded! 📥');
+  };
+
+  const downloadAccountStatement = (account) => {
+    if (!account) return;
+
+    const accTransactions = transactionHistory.filter(tx => 
+      (tx.fromAccountNum === account.accountNumber) || 
+      (tx.toAccountNum === account.accountNumber)
+    );
+
+    if (accTransactions.length === 0) {
+      showToast('No transactions found for this account.');
+      return;
+    }
+
+    const rows = accTransactions.map(tx => {
+      const isCredit = tx.toAccountNum === account.accountNumber;
+      return `
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 12px; text-align: left;">${tx.date}</td>
+          <td style="padding: 12px; text-align: left;">${tx.name}</td>
+          <td style="padding: 12px; text-align: right; color: ${isCredit ? '#10b981' : '#000'}; font-weight: bold;">
+            ${isCredit ? `+₹${tx.amountVal.toLocaleString()}` : `-₹${tx.amountVal.toLocaleString()}`}
+          </td>
+          <td style="padding: 12px; text-align: left;">${isCredit ? 'Credit' : 'Debit'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>SmartBank Statement - ${account.accountNumber}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; margin-bottom: 30px; }
+            .logo { font-size: 28px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
+            .logo span { color: #3b82f6; }
+            .title { font-size: 20px; font-weight: 800; color: #666; text-transform: uppercase; letter-spacing: 2px; }
+            .info-grid { display: grid; grid-cols: 2; gap: 20px; margin-bottom: 30px; }
+            .info-box { background: #f8fafc; padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; }
+            .info-label { font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
+            .info-value { font-size: 16px; font-weight: 800; color: #1e293b; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background-color: #f8fafc; color: #64748b; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; padding: 12px; border-bottom: 2px solid #eee; }
+            .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
+            .actions { margin-bottom: 20px; text-align: right; }
+            .btn { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+            @media print { .actions { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="actions">
+             <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+          </div>
+          <div class="header">
+            <div class="logo">SMART<span>BANK</span></div>
+            <div class="title">Account Statement</div>
+          </div>
+          <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+            <div class="info-box" style="flex: 1;">
+              <div class="info-label">Customer Details</div>
+              <div class="info-value">${account.userName || `${userProfile?.firstName} ${userProfile?.lastName}`}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 5px;">${userProfile?.email || ''}</div>
+            </div>
+            <div class="info-box" style="flex: 1;">
+              <div class="info-label">Account Details</div>
+              <div class="info-value">${account.accountNumber}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 5px;">Type: ${account.accountType} | Balance: ₹${account.balance.toLocaleString()}</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: left;">Date</th>
+                <th style="text-align: left;">Description</th>
+                <th style="text-align: right;">Amount</th>
+                <th style="text-align: left;">Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+          <div class="footer">
+            Generated on ${new Date().toLocaleString()}. This is a computer-generated document. SmartBank E-Banking System.
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Helper to trigger download
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Statement_${account.accountNumber}_${Date.now()}.html`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    showToast('Account statement generated! 📥');
   };
 
   // Filter requests for current user (Support both UID and Name for backward compatibility)
@@ -998,6 +1102,11 @@ export default function SecureDashboard() {
     setSelectedPlan(null);
     setCcStep(1);
     setCcPaymentStatus(null);
+    setPasswordFormData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
     setPaymentOtp('');
     setIsPaymentOtpSent(false);
     setPaymentOtpInput('');
@@ -4295,6 +4404,12 @@ export default function SecureDashboard() {
                 className="flex-1 h-16 rounded-2xl bg-slate-900 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all shadow-xl flex items-center justify-center gap-3"
               >
                 <CardIcon size={20} /> View Debit Card
+              </button>
+              <button 
+                onClick={() => downloadAccountStatement(selectedAccount)}
+                className="flex-1 h-16 rounded-2xl bg-emerald-600 text-white font-black uppercase tracking-widest text-xs hover:bg-emerald-700 transition-all shadow-xl flex items-center justify-center gap-3"
+              >
+                <Download size={20} /> Download Statement
               </button>
               <button 
                 onClick={() => setDepositModal(true)}

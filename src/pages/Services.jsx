@@ -156,14 +156,6 @@ export default function Services() {
               <p className="text-xl text-blue-100 mb-12 max-w-2xl mx-auto leading-relaxed">
                 Our world-class support team is available 24/7 to assist you with any questions or concerns. Whether it's a simple query or a complex transaction, we've got you covered.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-                <button className="h-16 px-12 rounded-2xl bg-white text-blue-600 font-black text-lg hover:bg-blue-50 transition-all shadow-xl hover:scale-105">
-                  Live Chat Now
-                </button>
-                <button className="h-16 px-12 rounded-2xl bg-blue-700 text-white font-black text-lg hover:bg-blue-800 transition-all">
-                  Browse Help Center
-                </button>
-              </div>
             </div>
           </div>
         </Container>
